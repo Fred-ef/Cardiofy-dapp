@@ -44,6 +44,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      # I consumer backend importano `@cardiofy/shared` via il suo `dist` (gitignored):
+      # va buildato prima, altrimenti tsc/esbuild non risolvono il modulo.
+      - run: npm run build -w @cardiofy/shared
       - name: Type-check (backend)
         run: npm run type-check -w backend
       - name: Lint (backend) — non-blocking
@@ -63,6 +66,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - run: npm run build -w @cardiofy/shared
       - run: npm run test -w backend
         env:
           # Vitest unit tests caricano AppConfig dal .env: forniamo defaults inert
@@ -86,6 +90,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - run: npm run build -w @cardiofy/shared
+      # Il gateway integration test deploya il `Notary` compilato (artifact gitignored):
+      # va compilato qui, altrimenti deploy-notary.ts fa fail-fast (artifact assente).
+      - run: npm run compile -w notary
       - name: Integration tests (testcontainers)
         run: npm run test:integration -w backend
         env:

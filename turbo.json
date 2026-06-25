@@ -6,6 +6,7 @@
       "outputs": ["dist/**", "!-node_modules"]
     },
     "test": {
+      "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
       "inputs": ["src/**/*.ts", "tests/**/*.ts", "contracts/**/*.sol", "test/**/*.ts"]
     },
@@ -24,6 +25,7 @@
       "cache": false
     },
     "type-check": {
+      "dependsOn": ["^build"],
       "outputs": []
     }
   }
