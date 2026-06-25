@@ -1,0 +1,12 @@
+{
+  // Config di BUILD per la produzione: emette solo il codice applicativo in `dist/`.
+  // `rootDir: "./src"` preserva il layout di output; l'`exclude` impedisce che gli unit
+  // e gli integration test co-locati finiscano nel bundle (gli helper vivono già in `tests/`,
+  // fuori dall'include).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["**/*.test.ts", "**/*.integration.test.ts"]
+}

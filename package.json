@@ -1,0 +1,36 @@
+{
+  "name": "cardiofy-dapp-workspace",
+  "packageManager": "npm@11.6.2",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build":     "turbo run build",
+    "dev":       "turbo run dev",
+    "test":      "turbo run test",
+    "start":     "turbo run start",
+    "lint":      "turbo run lint",
+    "lint:fix":  "turbo run lint:fix",
+    "type-check":"turbo run type-check",
+    "db:sync":   "npm exec -w backend -- drizzle-kit generate && npm run db:migrate -w backend",
+    "db:migrate":"npm run db:migrate -w backend",
+    "db:seed":   "npm run db:seed -w backend",
+    "stack:up":  "docker compose up -d",
+    "stack:down":"docker compose down",
+    "stack:logs":"docker compose logs -f",
+    "stack:rebuild":"docker compose up -d --build",
+    "notary:compile":       "npm run compile -w notary",
+    "notary:test":          "npm run test -w notary",
+    "notary:deploy:sepolia":"npm run deploy:sepolia -w notary",
+    "notary:deploy:gnosis": "npm run deploy:gnosis -w notary",
+    "notary:address":       "npm run address -w notary",
+    "notary:address:sync":  "npm run address:sync -w notary",
+    "notary:verify":        "npm run verify -w notary --",
+    "notary:keygen":        "npm run keygen -w notary --"
+  },
+  "devDependencies": {
+    "turbo": "^2.8.13"
+  }
+}

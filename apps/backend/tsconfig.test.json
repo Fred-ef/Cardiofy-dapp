@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "db/**/*.ts",
+    "vitest.config.ts",
+    "vitest.integration.config.ts",
+    "vitest.setup.ts"
+  ],
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"]
+  }
+}

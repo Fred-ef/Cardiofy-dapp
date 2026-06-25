@@ -144,3 +144,12 @@ vite.config.ts.timestamp-*
 
 # AI
 ai-context/
+
+# Turborepo
+.turbo/
+
+# Hardhat
+artifacts/
+cache/
+typechain-types/
+ignition/deployments/

@@ -1,0 +1,40 @@
+{
+  // Config "broad": copre src + tests, usata da editor/IDE e dal type-check.
+  // La build di produzione usa `tsconfig.build.json` (rootDir ./src, esclude i test).
+  // `rootDir: "."` evita TS6059 quando i test co-locati in src importano gli helper
+  // esterni in `tests/` (#tests/*).
+  "include": ["src/**/*", "tests/**/*"],
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "paths": {
+      "#src/*":            ["./src/*"],
+      "#modules/*":        ["./src/modules/*"],
+      "#errors/*":         ["./src/errors/*"],
+      "#infrastructure/*": ["./src/infrastructure/*"],
+      "#models/*":         ["./src/models/*"],
+      "#utils/*":          ["./src/utils/*"],
+      "#types/*":          ["./src/types/*"],
+      "#tests/*":          ["./tests/*"],
+      "#decorators":       ["./src/infrastructure/http/decorators/index.ts"]
+    },
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext"],
+    "types": ["node"],
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true
+  }
+}

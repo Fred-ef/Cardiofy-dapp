@@ -1,0 +1,32 @@
+{
+  "name": "notary",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build":           "hardhat compile",
+    "compile":         "hardhat compile",
+    "test":            "hardhat test",
+    "type-check":      "tsc --noEmit -p ./tsconfig.json",
+    "node":            "hardhat node",
+    "deploy:sepolia":  "hardhat ignition deploy ignition/modules/Notary.ts --network sepolia",
+    "deploy:gnosis":   "hardhat ignition deploy ignition/modules/Notary.ts --network gnosis",
+    "verify:sepolia":  "hardhat ignition verify chain-11155111",
+    "verify:gnosis":   "hardhat ignition verify chain-100",
+    "address":         "tsx scripts/address.ts",
+    "address:sync":    "tsx scripts/address.ts --update-backend-env",
+    "verify":          "tsx scripts/verify.ts",
+    "transfer-owner":  "tsx scripts/transfer-ownership.ts",
+    "keygen":          "tsx scripts/keygen.ts"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0",
+    "ethers": "^6.14.4"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/node": "^22.15.29",
+    "hardhat": "^2.24.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.0.0"
+  }
+}

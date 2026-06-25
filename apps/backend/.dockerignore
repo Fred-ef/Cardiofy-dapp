@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.turbo
+*.log
+.env
+.env.*
+!.env.example
+.git
+.github
+.vscode
+.idea

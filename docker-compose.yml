@@ -1,0 +1,76 @@
+# Stack-up unificato del modulo blockchain Cardiofy.
+#
+# Servizi:
+#   - postgres : DB operativo (sempre acceso)
+#   - backend  : modulo blockchain (REST API + cron jobs)
+#   - pgadmin  : profilo opzionale `tools` per debugging
+#
+# Uso tipico:
+#   docker compose up -d                       # postgres + backend
+#   docker compose --profile tools up -d       # + pgadmin
+#   docker compose logs -f backend
+#   docker compose down -v                     # ferma + rimuove volumi (CAUTION)
+#
+# Configurazione: copia `.env.compose.example` in `.env` e adatta.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cardiofy_postgres
+    environment:
+      POSTGRES_USER:     ${DB_USER:-cardiofy}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cardiofy}
+      POSTGRES_DB:       ${DB_NAME:-cardiofy}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test:      ["CMD-SHELL", "pg_isready -U ${DB_USER:-cardiofy} -d ${DB_NAME:-cardiofy}"]
+      interval:  10s
+      timeout:   5s
+      retries:   5
+
+  backend:
+    container_name: cardiofy_backend
+    build:
+      context:    .
+      dockerfile: apps/backend/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-cardiofy}:${DB_PASSWORD:-cardiofy}@postgres:5432/${DB_NAME:-cardiofy}
+      PORT: "${BACKEND_PORT:-3001}"
+      NODE_ENV: "${NODE_ENV:-production}"
+      AUTH_ENABLED: "${AUTH_ENABLED:-false}"
+      CORE_AUTH_TOKEN: "${CORE_AUTH_TOKEN:-}"
+      NOTARY_RPC_URL: "${NOTARY_RPC_URL:-}"
+      NOTARY_PRIVATE_KEY: "${NOTARY_PRIVATE_KEY:-}"
+      NOTARY_CONTRACT_ADDRESS: "${NOTARY_CONTRACT_ADDRESS:-}"
+      NOTARY_CHAIN_ID: "${NOTARY_CHAIN_ID:-11155111}"
+      NOTARY_CONFIRMATIONS: "${NOTARY_CONFIRMATIONS:-3}"
+      PUBLIC_RPC_URL: "${PUBLIC_RPC_URL:-https://rpc.sepolia.org}"
+      PUBLIC_EXPLORER_URL: "${PUBLIC_EXPLORER_URL:-https://sepolia.etherscan.io}"
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    restart: unless-stopped
+
+  # Profilo opzionale: si avvia solo con `docker compose --profile tools up`.
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: cardiofy_pgadmin
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@cardiofy.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: cardiofy_pgdata

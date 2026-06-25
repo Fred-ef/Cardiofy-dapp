@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancellazione automatica di run obsolete sullo stesso branch — evita di pagare CI doppia
+# per push veloci consecutivi mentre il backlog di PR-checks lavora in serie.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1 — install + cache. Espone i node_modules ai job downstream via cache.
+  # ─────────────────────────────────────────────────────────────────────────────
+  install:
+    name: Install workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2 — qualità statica: type-check e lint. Veloce, fail-fast.
+  # ─────────────────────────────────────────────────────────────────────────────
+  static:
+    name: Static analysis
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Type-check (backend)
+        run: npm run type-check -w backend
+      - name: Lint (backend) — non-blocking
+        run: npm run lint -w backend || echo "::warning::lint produced findings"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 3 — unit test backend (vitest, no infra esterna).
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-backend-unit:
+    name: Backend unit tests
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w backend
+        env:
+          # Vitest unit tests caricano AppConfig dal .env: forniamo defaults inert
+          # solo per soddisfare lo schema Zod (nessun servizio reale viene contattato).
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          NODE_ENV:     test
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 4 — integration test backend con Postgres reale (testcontainers-friendly).
+  # Forniamo Postgres come "service container" così che AppConfig possa caricare,
+  # ma i test usano testcontainers per il loro DB ephemeral.
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-backend-integration:
+    name: Backend integration tests
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Integration tests (testcontainers)
+        run: npm run test:integration -w backend
+        env:
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          NODE_ENV:     test
+          # testcontainers usa il daemon Docker fornito dal runner ubuntu-latest.
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 5 — smart contract (compile + hardhat test).
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-notary:
+    name: Notary smart contract
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run compile -w notary
+      - run: npm run test -w notary
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 6 — build aggregato (turbo, depends on apps test).
+  # ─────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    needs: [static, test-backend-unit, test-notary]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
