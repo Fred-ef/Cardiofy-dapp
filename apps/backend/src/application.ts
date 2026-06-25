@@ -48,23 +48,38 @@ export class Application {
   private async fatalShutdown(signal: string, err: unknown): Promise<void> {
     const error = err instanceof Error ? err : new Error(String(err));
     this.logger.error(`[${signal}] errore non gestito — arresto fatale`, error);
-    const force = setTimeout(() => process.exit(1), this.config.env.SERVER.SHUTDOWN_TIMEOUT_MS);
+    const force = setTimeout(() => {
+      this.httpServer?.closeAllConnections();
+      process.exit(1);
+    }, this.config.env.SERVER.SHUTDOWN_TIMEOUT_MS);
     force.unref();
     await this.gracefulShutdown().catch(() => {});
     clearTimeout(force);
+    // Stato del processo compromesso da un errore non gestito: uscita forzata con codice
+    // di errore (qui process.exit è legittimo, non c'è un "drain pulito" da preservare).
     process.exit(1);
   }
 
   private gracefulExit(signal: string): void {
     this.logger.info(`[shutdown] ricevuto ${signal}, arresto graceful...`);
+    // Rete di sicurezza: se il drain non completa entro il timeout, tronca i socket
+    // ancora in volo e forza l'uscita. `.unref()` → non tiene vivo l'event loop, quindi
+    // se il drain riesce prima questo timer non impedisce l'uscita naturale.
     const force = setTimeout(() => {
       this.logger.error('[shutdown] timeout superato, arresto forzato');
+      this.httpServer?.closeAllConnections();
       process.exit(1);
     }, this.config.env.SERVER.SHUTDOWN_TIMEOUT_MS);
     force.unref();
 
     void this.gracefulShutdown()
-      .then(() => { clearTimeout(force); process.exit(0); })
+      .then(() => {
+        // Niente process.exit(0): rimossi tutti gli handle (server/cron/DB), l'event loop
+        // si svuota e Node esce da solo con questo exit code — evita il troncamento di
+        // log/flush ancora bufferizzati. Il `force` (unref) resta come fallback se un
+        // handle residuo (es. poller del provider) impedisse il drain naturale.
+        process.exitCode = 0;
+      })
       .catch((e: unknown) => {
         this.logger.error("[shutdown] errore durante l'arresto", e);
         process.exit(1);
@@ -73,14 +88,18 @@ export class Application {
 
   private async gracefulShutdown(): Promise<void> {
     if (this.httpServer) {
+      const server = this.httpServer;
       await new Promise<void>((resolve, reject) => {
-        this.httpServer!.close((err) => {
+        server.close((err) => {
           if (err && (err as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') {
             reject(err);
           } else {
             resolve();
           }
         });
+        // I keep-alive idle non hanno richieste in volo: chiudendoli subito, `close()`
+        // non resta in attesa di socket inattivi (causa tipica di shutdown "appeso").
+        server.closeIdleConnections();
       });
     }
     this.batchJob.stop();
