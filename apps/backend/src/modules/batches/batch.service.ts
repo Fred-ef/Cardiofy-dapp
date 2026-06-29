@@ -1,6 +1,7 @@
 import { inject, injectable } from 'tsyringe';
 import { DI_TOKENS } from '#infrastructure/di/tokens.js';
 import { NotFoundError } from '#errors/not-found.error.js';
+import type { AppConfig } from '#infrastructure/config/index.js';
 import type { ILoggerService } from '#infrastructure/logger/interfaces/i-logger.service.js';
 import type { INotaryGateway } from '#modules/notary/interfaces/i-notary.gateway.js';
 import type { IViewRepository } from '#modules/views/interfaces/i-view.repository.js';
@@ -16,6 +17,7 @@ export class BatchService implements IBatchService {
     @inject(DI_TOKENS.IViewRepository)  private readonly views: IViewRepository,
     @inject(DI_TOKENS.IAssetRepository) private readonly assets: IAssetRepository,
     @inject(DI_TOKENS.INotaryGateway)   private readonly gateway: INotaryGateway,
+    @inject(DI_TOKENS.AppConfig)        private readonly config: AppConfig,
     @inject(DI_TOKENS.ILoggerService)   private readonly logger: ILoggerService,
   ) {}
 
@@ -36,6 +38,22 @@ export class BatchService implements IBatchService {
     if (aggregates.length === 0) {
       this.logger.info(`[BatchService] periodo ${periodId}: nessuna view da pubblicare`);
       return null;
+    }
+
+    // Guard anti-oversize: una singola `publishBatch` con troppi asset esaurirebbe il gas-limit
+    // di blocco (~500 asset su Gnosis). Finché il chunking checkpointed non è implementato,
+    // falliamo in modo esplicito e azionabile invece di inviare una tx destinata a fallire on-chain.
+    // Vedi ai-context/future-tasks/batch-chunking-plan.md.
+    const maxChunk = this.config.env.SCHEDULE.BATCH_MAX_CHUNK;
+    if (aggregates.length > maxChunk) {
+      this.logger.error(
+        '[BatchService] batch oltre la soglia sicura per singola transazione — richiesto chunking',
+        undefined,
+        { periodId, assetCount: aggregates.length, max: maxChunk },
+      );
+      throw new Error(
+        `Batch ${periodId}: ${aggregates.length} asset > soglia ${maxChunk}; chunking non ancora attivo`,
+      );
     }
 
     const viewsTotal = aggregates.reduce((acc, a) => acc + a.viewsInPeriod, 0);

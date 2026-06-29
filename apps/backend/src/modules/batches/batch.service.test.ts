@@ -7,6 +7,7 @@ import {
   makeAssetRepoMock,
   makeNotaryGatewayMock,
   makeLoggerMock,
+  makeAppConfigMock,
 } from '#tests/support/mocks.js';
 import { fixtures } from '#tests/support/fixtures.js';
 import type { IBatchRepository } from './interfaces/i-batch.repository.js';
@@ -29,7 +30,7 @@ describe('BatchService', () => {
     assetRepo = makeAssetRepoMock();
     gateway   = makeNotaryGatewayMock();
     logger    = makeLoggerMock();
-    service   = new BatchService(batchRepo, viewRepo, assetRepo, gateway, logger);
+    service   = new BatchService(batchRepo, viewRepo, assetRepo, gateway, makeAppConfigMock(), logger);
   });
 
   describe('yesterdayPeriodId', () => {
@@ -95,6 +96,22 @@ describe('BatchService', () => {
       expect(batchRepo.markFailed).toHaveBeenCalledWith(periodId);
       expect(assetRepo.incrementMirrorViews).not.toHaveBeenCalled();
       expect(viewRepo.markPeriodAnchored).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it('guard: fails loudly when the batch exceeds BATCH_MAX_CHUNK, without sending a tx', async () => {
+      const cfg = makeAppConfigMock();
+      cfg.env.SCHEDULE.BATCH_MAX_CHUNK = 2;
+      const svc = new BatchService(batchRepo, viewRepo, assetRepo, gateway, cfg, logger);
+      vi.mocked(viewRepo.aggregatesForPeriod).mockResolvedValueOnce([
+        { assetId: 'a', viewsInPeriod: 1 },
+        { assetId: 'b', viewsInPeriod: 1 },
+        { assetId: 'c', viewsInPeriod: 1 },
+      ]);
+
+      await expect(svc.publishBatchFor(periodId)).rejects.toThrow(/chunking/);
+      expect(batchRepo.createPending).not.toHaveBeenCalled();
+      expect(gateway.publishBatch).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalled();
     });
   });
