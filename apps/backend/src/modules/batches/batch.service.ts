@@ -14,12 +14,12 @@ import type { IBatchService } from './interfaces/i-batch.service.js';
 export class BatchService implements IBatchService {
   constructor(
     @inject(DI_TOKENS.IBatchRepository) private readonly repo: IBatchRepository,
-    @inject(DI_TOKENS.IViewRepository)  private readonly views: IViewRepository,
+    @inject(DI_TOKENS.IViewRepository) private readonly views: IViewRepository,
     @inject(DI_TOKENS.IAssetRepository) private readonly assets: IAssetRepository,
-    @inject(DI_TOKENS.INotaryGateway)   private readonly gateway: INotaryGateway,
-    @inject(DI_TOKENS.AppConfig)        private readonly config: AppConfig,
-    @inject(DI_TOKENS.ILoggerService)   private readonly logger: ILoggerService,
-  ) {}
+    @inject(DI_TOKENS.INotaryGateway) private readonly gateway: INotaryGateway,
+    @inject(DI_TOKENS.AppConfig) private readonly config: AppConfig,
+    @inject(DI_TOKENS.ILoggerService) private readonly logger: ILoggerService,
+  ) { }
 
   yesterdayPeriodId(): number {
     const now = new Date();
@@ -41,9 +41,6 @@ export class BatchService implements IBatchService {
     }
 
     // Guard anti-oversize: una singola `publishBatch` con troppi asset esaurirebbe il gas-limit
-    // di blocco (~500 asset su Gnosis). Finché il chunking checkpointed non è implementato,
-    // falliamo in modo esplicito e azionabile invece di inviare una tx destinata a fallire on-chain.
-    // Vedi ai-context/future-tasks/batch-chunking-plan.md.
     const maxChunk = this.config.env.SCHEDULE.BATCH_MAX_CHUNK;
     if (aggregates.length > maxChunk) {
       this.logger.error(

@@ -41,8 +41,6 @@ const envSchema = z.object({
   BATCH_CRON: z.string().default('0 0 * * *'),
   RECONCILE_CRON: z.string().default('*/5 * * * *'),
   // Massimo numero di asset per singola transazione `publishBatch`, sotto al gas-limit di blocco.
-  // Oltre questa soglia il batch andrebbe spezzato (chunking, non ancora implementato): il
-  // BatchService fallisce in modo esplicito anziché tentare una tx destinata a esaurire il gas.
   BATCH_MAX_CHUNK: z.coerce.number().int().positive().default(300),
 
   // Auth between core and module — token condiviso (Bearer). Opzionale: se assente,
