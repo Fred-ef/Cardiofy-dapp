@@ -10,6 +10,18 @@ CREATE TABLE "assets" (
 	"total_views_mirror" bigint DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "batch_chunks" (
+	"period_id" bigint NOT NULL,
+	"chunk_index" integer NOT NULL,
+	"payload" jsonb NOT NULL,
+	"status" "onchain_status" DEFAULT 'PENDING' NOT NULL,
+	"tx_hash" varchar(66),
+	"block_number" bigint,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"confirmed_at" timestamp,
+	CONSTRAINT "batch_chunks_period_id_chunk_index_pk" PRIMARY KEY("period_id","chunk_index")
+);
+--> statement-breakpoint
 CREATE TABLE "batches" (
 	"period_id" bigint PRIMARY KEY NOT NULL,
 	"asset_count" integer NOT NULL,
@@ -19,7 +31,8 @@ CREATE TABLE "batches" (
 	"block_number" bigint,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"confirmed_at" timestamp,
-	"payload" jsonb
+	"payload" jsonb,
+	"mirror_applied" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "contracts" (
@@ -44,6 +57,7 @@ CREATE TABLE "views" (
 );
 --> statement-breakpoint
 CREATE INDEX "assets_status_idx" ON "assets" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "batch_chunks_status_idx" ON "batch_chunks" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "contracts_status_idx" ON "contracts" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "views_idempotency_unique" ON "views" USING btree ("idempotency_key");--> statement-breakpoint
 CREATE INDEX "views_period_idx" ON "views" USING btree ("period_id");--> statement-breakpoint

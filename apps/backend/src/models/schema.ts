@@ -7,8 +7,10 @@ import {
   bigint,
   jsonb,
   varchar,
+  boolean,
   uniqueIndex,
   index,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 // =======================
@@ -108,8 +110,37 @@ export const batches = pgTable(
     createdAt:   timestamp('created_at').defaultNow().notNull(),
     confirmedAt: timestamp('confirmed_at'),
     payload:     jsonb('payload'),  // snapshot degli update [{ assetId, viewsInPeriod }]
+    // Mirror locale dei contatori applicato (esattamente una volta) alla finalizzazione del periodo.
+    mirrorApplied: boolean('mirror_applied').default(false).notNull(),
   }
 );
 
 export type BatchRow = typeof batches.$inferSelect;
 export type NewBatchRow = typeof batches.$inferInsert;
+
+// =======================
+// BATCH_CHUNKS — unità transazionali di un batch (chunking checkpointed).
+// Un batch giornaliero che supera il gas-limit di blocco è spezzato in più chunk,
+// ciascuno pubblicato in una propria transazione `publishBatch` (additiva).
+// =======================
+
+export const batchChunks = pgTable(
+  'batch_chunks',
+  {
+    periodId:    bigint('period_id', { mode: 'number' }).notNull(),
+    chunkIndex:  integer('chunk_index').notNull(),
+    payload:     jsonb('payload').notNull(),  // slice deterministico [{ assetId, viewsInPeriod }]
+    status:      onchainStatusEnum('status').default('PENDING').notNull(),
+    txHash:      varchar('tx_hash', { length: 66 }),
+    blockNumber: bigint('block_number', { mode: 'number' }),
+    createdAt:   timestamp('created_at').defaultNow().notNull(),
+    confirmedAt: timestamp('confirmed_at'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.periodId, table.chunkIndex] }),
+    index('batch_chunks_status_idx').on(table.status),
+  ]
+);
+
+export type BatchChunkRow = typeof batchChunks.$inferSelect;
+export type NewBatchChunkRow = typeof batchChunks.$inferInsert;
