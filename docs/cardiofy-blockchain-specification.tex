@@ -111,8 +111,8 @@
 \begin{tabularx}{0.75\textwidth}{lX}
 \toprule
 \textbf{Documento} & Specifica tecnica del modulo blockchain di Cardiofy \\
-\textbf{Versione} & 0.2 (sviluppo) \\
-\textbf{Stato} & Validazione \\
+\textbf{Versione} & 0.2 (sviluppo - rivisto) \\
+\textbf{Stato} & Implementato e validato (suite di test e CI attive) \\
 \textbf{Destinatari} & Committente e sviluppatori della piattaforma Cardiofy \\
 \textbf{Linguaggio} & Italiano \\
 \bottomrule
@@ -132,19 +132,25 @@
 % =============================================================================
 
 \begin{description}[leftmargin=0pt, itemsep=0.3em, font=\sffamily\bfseries]
-\item[Asset] Entit\`a del core Cardiofy che rappresenta un contenuto scientifico fruibile (ad esempio un articolo). Nel modulo blockchain \`e identificato da un \texttt{assetId} opaco e ricondotto on-chain alla sua impronta cryptografica.
+\item[Asset] Entit\`a del core Cardiofy che rappresenta un contenuto scientifico fruibile (ad esempio un articolo). Nel modulo blockchain \`e identificato da un \texttt{assetId} opaco e ricondotto on-chain alla sua impronta crittografica.
 
 \item[Attester] Identit\`a (indirizzo Ethereum) autorizzata a invocare le operazioni di scrittura sullo smart contract. Corrisponde a una chiave operativa controllata da Cardiofy.
 
-\item[Batch (giornaliero)] Insieme delle letture (\emph{view}) registrate in una finestra giornaliera, aggregate per asset e pubblicate on-chain in un'unica transazione che aggiorna i contatori cumulativi degli asset coinvolti.
+\item[Owner] Identit\`a amministrativa del contratto, distinta dall'attester. Pu\`o ruotare l'attester e trasferire la propriet\`a. Il trasferimento avviene \emph{a due fasi} (standard \texttt{Ownable2Step}): l'owner corrente la propone ed il nuovo owner la accetta.
 
-\item[Contratto (notarizzato)] Entit\`a del core che rappresenta un accordo (es. autore--editore). Nel modulo blockchain ne viene custodita on-chain un'impronta cryptografica, a garanzia di immutabilit\`a e tracciabilit\`a dell'accordo nel tempo.
+\item[Riconciliazione] Processo periodico interno che confronta lo stato locale delle transazioni inviate con lo stato effettivo on-chain, portando a conferma le notarizzazioni e i batch una volta raggiunta la profondit\`a di conferma richiesta, e segnalando eventuali discrepanze fra i contatori locali e quelli on-chain.
+
+\item[Stato on-chain] Ciclo di vita di ogni entit\`a notarizzata (contratto, asset, batch) nella base dati del modulo: \texttt{PENDING} (transazione inviata, non ancora confermata), \texttt{CONFIRMED} (confermata on-chain) o \texttt{FAILED} (invio fallito).
+
+\item[Batch giornaliero] Insieme delle letture (\emph{view}) registrate in una finestra giornaliera, aggregate per asset e pubblicate on-chain in un'unica transazione che aggiorna i contatori cumulativi degli asset coinvolti.
+
+\item[Contratto] Entit\`a del core che rappresenta un accordo (es. autore--editore). Nel modulo blockchain ne viene custodita on-chain un'impronta crittografica, a garanzia di immutabilit\`a e tracciabilit\`a dell'accordo nel tempo.
 
 \item[Idempotency key] Identificativo univoco di un tentativo di registrazione di una view. Permette al core di reinviare in sicurezza una richiesta in caso di errore di rete senza causare doppi conteggi.
 
-\item[Notarizzazione] Atto di pubblicare on-chain l'impronta cryptografica (hash) di un dato che vive nel core, associandola ad un identificatore. Rende il dato successivamente verificabile da chiunque attraverso una semplice lettura della blockchain.
+\item[Notarizzazione] Atto di pubblicare on-chain l'impronta crittografica (hash) di un dato che vive nel core, associandola ad un identificatore. Rende il dato successivamente verificabile da chiunque attraverso una semplice lettura della blockchain.
 
-\item[periodId] Identificativo univoco di un batch. Coincide con il timestamp Unix dell'inizio della finestra temporale (mezzanotte UTC del giorno).
+\item[periodId] Identificativo univoco di un batch. Coincide con il timestamp Unix dell'inizio della finestra temporale (es. UTC del giorno).
 
 \item[totalViews] Contatore cumulativo on-chain delle view associate ad un asset, aggiornato a ogni batch giornaliero. \`E direttamente leggibile da chiunque interroghi lo smart contract.
 \end{description}
@@ -155,13 +161,13 @@
 
 \subsection{Principio architetturale}
 
-L'architettura del modulo \`e ibrida: i dati operativi (eventi di lettura, stato delle transazioni inviate, idempotenza) vivono in una base dati propria del modulo; la blockchain custodisce le \emph{impronte cryptografiche} delle entit\`a rilevanti del core (contratti e asset) e i \emph{contatori cumulativi pubblici} delle view per ciascun asset.
+L'architettura del modulo \`e ibrida: i dati operativi (eventi di lettura, stato delle transazioni inviate, chiavi) vivono in una base dati propria del modulo; la blockchain custodisce le \emph{impronte crittografiche} delle entit\`a rilevanti del core (contratti e asset) e i \emph{contatori cumulativi pubblici} delle view per ciascun asset.
 
-La logica della scelta \`e duplice. Da un lato, la blockchain svolge un ruolo di \emph{registro pubblico parallelo} verificabile da chiunque, indipendentemente da Cardiofy. Dall'altro, il modulo evita di duplicare entit\`a di dominio del core (autori, contenuti, pagamenti) limitandosi a riceverne identificatori opachi: \`e un confine sigillato fra il core e la blockchain, secondo il pattern enterprise dell'\emph{anti-corruption layer}.
+La logica della scelta \`e duplice. Da un lato, la blockchain svolge un ruolo di \emph{registro pubblico parallelo} verificabile pubblicamente, indipendentemente da Cardiofy. Dall'altro, il modulo evita di duplicare entit\`a di dominio del core (autori, contenuti, pagamenti) limitandosi a riceverne identificatori opachi: \`e un confine sigillato fra il core e la blockchain, funzionando come   \emph{anti-corruption layer}.
 
 \subsection{Auditabilit\`a pubblica diretta}
 
-Un requisito centrale del progetto \`e che soggetti esterni a Cardiofy possano verificare in autonomia l'integrit\`a dei dati custoditi (esistenza dei contratti, esistenza degli asset, conteggi delle view) senza dover passare attraverso le API del modulo. Lo smart contract \`e progettato in modo che ogni informazione utile per l'audit pubblico sia leggibile direttamente sulla blockchain tramite qualunque nodo RPC, senza intermediazione del modulo o del core.
+Un requisito esplicito \`e che gli utenti della piattaforma possano verificare in autonomia l'integrit\`a dei dati custoditi (esistenza dei contratti, esistenza degli asset, conteggi delle view) senza dover passare attraverso le API del modulo. Lo smart contract \`e progettato in modo che ogni informazione utile per l'audit pubblico sia leggibile direttamente sulla blockchain tramite qualunque nodo RPC, senza intermediazione del modulo o del core.
 
 \subsection{Topologia del sistema}
 
@@ -174,7 +180,7 @@ La figura~\ref{fig:topologia} sintetizza i componenti del modulo e le loro relaz
 \node[coreblock, minimum width=12cm] (core) {Core Cardiofy};
 
 \node[serviceblock, below=1.0cm of core, minimum width=3.2cm] (api) {REST API \\ \footnotesize (gateway sincrono)};
-\node[serviceblock, right=0.8cm of api, minimum width=3.2cm] (worker) {Batch Worker \\ \footnotesize (job giornaliero)};
+\node[serviceblock, right=0.8cm of api, minimum width=3.2cm] (worker) {Worker schedulati \\ \footnotesize (batch + riconciliazione)};
 \node[serviceblock, right=0.8cm of worker, minimum width=3.2cm] (adapter) {Chain Adapter};
 
 \node[datablock, below=0.6cm of worker, minimum width=10cm] (db) {Base dati operativa};
@@ -205,24 +211,26 @@ La figura~\ref{fig:topologia} sintetizza i componenti del modulo e le loro relaz
 \subsection{Componenti del modulo}
 
 \begin{description}[leftmargin=0.5cm, itemsep=0.2em]
-\item[REST API.] Punto di ingresso sincrono per il core Cardiofy. Riceve le notifiche di view validate dal core e le richieste di notarizzazione di nuovi contratti e nuovi asset. Espone inoltre interrogazioni sullo stato delle entit\`a notarizzate e dei batch pubblicati.
+\item[REST API:] Punto di ingresso sincrono per il core Cardiofy. Riceve le notifiche di view validate dal core e le richieste di notarizzazione di nuovi contratti e nuovi asset. Espone inoltre interrogazioni sullo stato delle entit\`a notarizzate e dei batch pubblicati. L'accesso \`e protetto da autenticazione a token condiviso col core (sez.~\ref{sec:sicurezza}); a ciascun endpoint si applica validazione sia dell'ingresso sia dell'uscita rispetto a uno schema condiviso (da integrare nel core).
 
-\item[Batch Worker.] Processo schedulato che si attiva una volta al giorno: aggrega le view del giorno precedente per asset e ne richiede la pubblicazione on-chain in una singola transazione.
+\item[Batch Worker:] Processo schedulato giornaliero: aggrega le view del giorno precedente per asset e ne richiede la pubblicazione on-chain in un'unica transazione.
 
-\item[Base dati operativa.] Conserva i soli dati operativi necessari al funzionamento del modulo (log delle view ricevute, idempotenza, stato delle transazioni inviate alla blockchain, storico delle notarizzazioni effettuate). Non duplica entit\`a di dominio del core.
+\item[Reconciliation Worker:] Processo schedulato ad alta frequenza che porta a conferma le notarizzazioni e i batch in stato \texttt{PENDING} non appena raggiungono la profondit\`a di conferma richiesta, e applica una verifica difensiva confrontando i contatori cumulativi on-chain con quelli mantenuti localmente (sez.~\ref{sec:flussi}). Entrambi i worker si disattivano automaticamente in assenza della configurazione on-chain.
+
+\item[Base dati operativa:] Conserva i soli dati operativi necessari al funzionamento del modulo (log delle view ricevute, idempotenza, stato delle transazioni inviate alla blockchain, storico delle notarizzazioni effettuate). Ogni entit\`a notarizzata vi mantiene il proprio stato on-chain (\texttt{PENDING}/\texttt{CONFIRMED}/\texttt{FAILED}). Non duplica entit\`a di dominio del core.
 
 \item[Chain Adapter.] Strato di astrazione verso la blockchain. Incapsula la firma delle transazioni, la stima del gas, il monitoraggio delle conferme. La sua parametrizzazione (RPC, chain ID, indirizzo del contratto) consente la portabilit\`a fra chain EVM-compatibili.
 
-\item[Smart Contract \texttt{Notary}.] Singolo contratto on-chain. Custodisce in modo immutabile le impronte cryptografiche dei contratti e degli asset notarizzati, e i contatori cumulativi pubblici delle view per ciascun asset.
+\item[Smart Contract \texttt{Notary}.] Singolo contratto on-chain. Custodisce in modo immutabile le impronte crittografiche dei contratti e degli asset notarizzati, e i contatori cumulativi pubblici delle view per ciascun asset.
 \end{description}
 
-\noindent Per lo sviluppo ed il prototipo \`e prevista la testnet Ethereum (Sepolia), mentre il rilascio in produzione \`e previsto su Gnosis Chain, scelta per la prevedibilit\`a dei costi e per il radicamento europeo dell'ecosistema. La portabilit\`a del codice permette di cambiare chain con un solo aggiornamento di configurazione.
+\noindent Per lo sviluppo ed il prototipo \`e prevista la testnet Ethereum (Sepolia), mentre il rilascio in produzione \`e previsto su una chain EVM-compatible a basso costo (es. Gnosis Chain, consigliata per la prevedibilit\`a dei costi e per il radicamento europeo dell'ecosistema). La portabilit\`a del codice permette di cambiare chain con un solo aggiornamento di configurazione.
 
 % =============================================================================
 \section{Modello dei dati}\label{sec:dati}
 % =============================================================================
 
-Il criterio di separazione \`e netto: \emph{on-chain solo ci\`o che \`e immutabile per definizione, di dimensione ridotta e utile all'audit pubblico; off-chain tutto il resto, senza duplicare entit\`a di dominio del core.}
+Il criterio di separazione \`e netto: \emph{on-chain solo ci\`o che \`e immutabile per definizione, di dimensione ridotta e utile all'audit pubblico; off-chain tutto il resto (di nuovo, senza duplicazione di entit\`a di dominio del core).}
 
 \subsection{Cosa vive on-chain}
 
@@ -244,7 +252,7 @@ Batch pubblicati      & sequenza di eventi giornalieri che aggiornano i contator
 
 \subsection{Cosa vive off-chain}
 
-La base dati operativa registra ci\`o che serve al funzionamento del modulo: le view ricevute (con identificativo opaco dell'asset, hash pseudonimo del lettore, evidence opaque ricevuta dal core, periodo di appartenenza), le chiavi di idempotenza viste, lo storico delle transazioni inviate alla blockchain con i relativi esiti, lo stato di ciascun batch giornaliero. \\ Il modulo \emph{non} replica anagrafiche di dominio (autori, contenuti, pagamenti): per ogni request riceve dal core gli identificativi opachi necessari, opera, e risponde.
+La base dati operativa registra ci\`o che serve al funzionamento del modulo: le view ricevute (solo l'identificativo opaco dell'asset, il momento della view e il periodo di appartenenza), le chiavi di idempotenza viste, lo storico delle transazioni inviate alla blockchain con i relativi esiti, lo stato di ciascun batch giornaliero. Ogni entit\`a notarizzata attraversa gli stati \texttt{PENDING}, \texttt{CONFIRMED} e \texttt{FAILED}: la conferma on-chain \`e \emph{asincrona} ed \`e accertata dalla riconciliazione, non attesa in modo sincrono dalla richiesta HTTP. Per \emph{minimizzazione del dato}, il modulo non conserva identit\`a pseudonime del lettore n\'e evidence forensi: questi dati restano nel core, loro titolare. \\ Il modulo \emph{non} replica anagrafiche di dominio (autori, contenuti, pagamenti): per ogni request riceve dal core gli identificativi opachi necessari, opera, e risponde.
 
 \subsection{Aggregazione delle view}
 
@@ -264,7 +272,7 @@ Al termine di ciascuna giornata, il worker:
 
 \subsection{Responsabilit\`a e interfaccia}
 
-Lo smart contract \texttt{Notary} \`e singolo e gestisce tre concerns simmetriche: notarizzazione di contratti, notarizzazione di asset, aggiornamento periodico dei contatori di view degli asset. Le operazioni di scrittura sono riservate all'\emph{attester} (chiave operativa Cardiofy); la governance (rotazione attester, trasferimento propriet\`a) \`e riservata all'\emph{owner}.
+Lo smart contract \texttt{Notary} \`e singolo e gestisce tre concerns simmetriche: notarizzazione di contratti, notarizzazione di asset, aggiornamento periodico dei contatori di view degli asset. Le operazioni di scrittura sono riservate all'\emph{attester} (chiave operativa Cardiofy); la governance (rotazione attester, trasferimento propriet\`a) \`e riservata all'\emph{owner}. La governance dell'owner adotta il pattern \texttt{Ownable2Step} di OpenZeppelin: il trasferimento di propriet\`a richiede una proposta e una successiva accettazione esplicita, neutralizzando il rischio di trasferire la propriet\`a a un indirizzo errato o non controllato. Le condizioni di errore (chiamante non autorizzato, tentativo di sovrascrittura, hash o indirizzo nullo, asset sconosciuto, batch vuoto) provocano un \emph{revert} esplicito della transazione.
 
 \begin{center}
 \begin{tabularx}{\textwidth}{lX}
@@ -276,8 +284,9 @@ Lo smart contract \texttt{Notary} \`e singolo e gestisce tre concerns simmetrich
 \texttt{publishBatch(periodId, updates[])} & Aggiorna i contatori di view per un insieme di asset gi\`a notarizzati. Riservata all'attester. Emette un evento per ciascun asset aggiornato e un evento di chiusura batch. \\
 \texttt{contracts(contractId)} & Lettura pubblica: impronta cryptografica del contratto, se notarizzato. \\
 \texttt{assets(assetId)} & Lettura pubblica: impronta cryptografica, data di notarizzazione e contatore cumulativo di view. \\
-\texttt{rotateAttester(newAttester)} & Sostituisce la chiave operativa. Riservata all'owner. \\
-\texttt{transferOwnership(newOwner)} & Trasferisce la propriet\`a amministrativa. Riservata all'owner. \\
+\texttt{rotateAttester(newAttester)} & Sostituisce la chiave operativa. Riservata all'owner. Rifiuta l'indirizzo nullo. \\
+\texttt{transferOwnership(newOwner)} & Avvia il trasferimento di propriet\`a (fase 1 di 2): registra il nuovo owner come \emph{proposto}, senza effetto immediato. Riservata all'owner. \\
+\texttt{acceptOwnership()} & Completa il trasferimento di propriet\`a (fase 2 di 2): invocabile solo dall'owner proposto. \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -291,26 +300,27 @@ Il contratto emette eventi indicizzati, consumabili da qualunque indicizzatore e
     \item \texttt{AssetNotarized(assetId, contentHash, timestamp)} -- notarizzazione di un nuovo asset.
     \item \texttt{AssetViewsRecorded(assetId, periodId, viewsInPeriod, newCumulative)} -- aggiornamento del contatore di un asset all'interno di un batch.
     \item \texttt{BatchPublished(periodId, assetCount)} -- chiusura di un batch giornaliero.
-    \item \texttt{AttesterRotated(oldAttester, newAttester)} e \texttt{OwnerTransferred(oldOwner, newOwner)} -- eventi di governance.
+    \item \texttt{AttesterRotated(oldAttester, newAttester)} -- rotazione della chiave operativa.
+    \item \texttt{OwnershipTransferStarted(previousOwner, newOwner)} e \texttt{OwnershipTransferred(previousOwner, newOwner)} -- eventi di governance del trasferimento di propriet\`a a due fasi (standard \texttt{Ownable2Step}).
 \end{itemize}
 
 \noindent L'attester che ha firmato una specifica transazione \`e sempre identificabile attraverso il campo \texttt{from} della transazione stessa.
 
 \subsection{Vincoli e costi}
 
-Il contratto impone il vincolo di sequenzialit\`a: l'aggiornamento del contatore di un asset richiede che l'asset sia stato preventivamente notarizzato. Questo evita la creazione implicita di entit\`a on-chain attraverso update e tiene coerente la cronologia di vita di ciascun asset.
+Il contratto impone il vincolo di sequenzialit\`a: l'aggiornamento del contatore di un asset richiede che l'asset sia stato preventivamente notarizzato. Questo evita la creazione implicita di entit\`a on-chain attraverso update e tiene coerente la cronologia di vita di ciascun asset. Inoltre, il contratto si assicura, mediante opportuni controlli logici, che non sia possibile notarizzare un asset o un contratto già notarizzati in precedenza.
 
-I costi gas, sulla chain di produzione prevista (Gnosis Chain), sono dell'ordine di frazioni di centesimo per ogni notarizzazione e per ogni aggiornamento di asset in un batch. Considerando una scala operativa stimata di poche unit\`a di notarizzazioni al giorno e dell'ordine di un centinaio di asset attivi per batch, il costo operativo annuo del modulo \`e dell'ordine di alcune decine di euro.
+Sono state fatte delle stime sui costi in gas sulla chain di produzione suggerita (Gnosis Chain), individuabili nell'ordine delle frazioni di centesimo per ogni notarizzazione e per ogni aggiornamento di asset in un batch. Considerando una scala operativa stimata di poche unit\`a di notarizzazioni al giorno e dell'ordine di un centinaio di asset interessati da ogni batch, il costo operativo annuo del modulo \`e dell'ordine di alcune decine di euro. Anche scalando a migliaia di asset interessati da ogni batch in contemporanea, le stime restano nell'ordine di poche centinaia di euro annue.
 
 % =============================================================================
 \section{API REST esposte al core}\label{sec:api}
 % =============================================================================
 
-\noindent\textit{Nota: gli esempi presentati in questa sezione sono provvisori. Lo schema preciso dei payload e delle risposte potr\`a essere affinato in fase di implementazione, ma le funzioni esposte e i loro contratti generali rappresentano l'intenzione consolidata.}
+\noindent\textit{Nota: gli schemi di richiesta e risposta sono consolidati come schemi condivisi (ed implementati come schemi Zod) nel pacchetto \texttt{@cardiofy/shared} e validati a runtime su ogni endpoint, sia in ingresso sia in uscita. Gli esempi seguenti riflettono lo stato corrente dell'implementazione.}
 
 \bigskip
 
-Il modulo espone al core Cardiofy un'API REST organizzata in tre famiglie funzionali: notarizzazione di contratti, notarizzazione di asset, registrazione di view. A queste si aggiungono endpoint di consultazione per il monitoraggio interno. L'autenticazione fra core e modulo (ad esempio mTLS o token in ambiente fidato) \`e responsabilit\`a del confine fra i due sistemi.
+Il modulo espone al core Cardiofy un'API REST organizzata in tre famiglie funzionali: notarizzazione di contratti, notarizzazione di asset, registrazione di view. A queste si aggiungono endpoint di consultazione e infrastrutturali. Tutti i percorsi sono serviti sotto il prefisso \texttt{/api/v1}. L'autenticazione fra core e modulo \`e a \emph{token Bearer condiviso}: gli endpoint di business sono protetti per impostazione predefinita (\emph{secure-by-default}), mentre restano pubblici i soli endpoint infrastrutturali (sonde di liveness/readiness per gli orchestratori, documentazione OpenAPI) e l'endpoint di audit \texttt{/chain/info}. Il modello di autenticazione \`e sostituibile (es. mTLS o JWT firmato dal core) senza impatto sui controller.
 
 \begin{center}
 \begin{tabularx}{\textwidth}{llX}
@@ -322,16 +332,19 @@ GET  & \texttt{/contracts/\{contractId\}} & Recupera la notarizzazione di un con
 POST & \texttt{/assets/\{assetId\}/notarize} & Notarizza un nuovo asset \\
 GET  & \texttt{/assets/\{assetId\}} & Recupera la notarizzazione e il contatore di un asset \\
 POST & \texttt{/views} & Registra una view valida \\
-GET  & \texttt{/assets/\{assetId\}/views} & Storia delle view per asset (deriva dagli eventi on-chain) \\
 GET  & \texttt{/batches/\{periodId\}} & Metadati del batch giornaliero e riferimenti on-chain \\
 GET  & \texttt{/chain/info} & Indica gli endpoint pubblici per l'audit indipendente \\
+GET  & \texttt{/health/live}, \texttt{/health/ready} & Sonde infrastrutturali (liveness / readiness) \\
+GET  & \texttt{/openapi.json} & Specifica OpenAPI dell'API \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
+\noindent Lo storico delle view per periodo nella sua interezza non \`e esposto come endpoint REST dedicato: \`e ricavabile direttamente dagli eventi on-chain \texttt{AssetViewsRecorded} (sez.~\ref{sec:flussi}), coerentemente col principio di auditabilit\`a pubblica diretta.
+
 \subsection{POST \texttt{/contracts/\{contractId\}/notarize}}
 
-Registra l'impronta cryptografica di un contratto. Il modulo persiste localmente l'associazione \texttt{contractId} \(\to\) \texttt{contentHash} ed invia la corrispondente transazione on-chain.
+Registra l'impronta crittograficadi un contratto. Il modulo persiste localmente l'associazione \texttt{contractId} \(\to\) \texttt{contentHash} ed invia la corrispondente transazione on-chain.
 
 \begin{lstlisting}[language=json, caption={Esempio di richiesta a \texttt{POST /contracts/\{id\}/notarize}.}]
 POST /contracts/contract_42/notarize HTTP/1.1
@@ -342,11 +355,11 @@ Content-Type: application/json
 }
 \end{lstlisting}
 
-\noindent \textbf{Risposta tipica:} \texttt{201 Created} con \texttt{txHash}, \texttt{blockNumber}, \texttt{chainId}; oppure \texttt{409 Conflict} se l'identificativo \`e gi\`a stato notarizzato.
+\noindent \textbf{Risposta tipica:} \texttt{201 Created} con l'identificativo, \texttt{contentHash}, \texttt{txHash} e \texttt{chainId}. Al momento della risposta la transazione \`e in stato \texttt{PENDING}: la conferma on-chain (e il relativo \texttt{blockNumber}) sopraggiunge in modo asincrono ed \`e accertata dalla riconciliazione. In caso di identificativo gi\`a notarizzato la risposta \`e \texttt{409 Conflict}.
 
 \subsection{POST \texttt{/assets/\{assetId\}/notarize}}
 
-Registra l'impronta cryptografica di un asset e ne inizializza il contatore di view a zero on-chain. Deve precedere qualsiasi \texttt{POST /views} relativa allo stesso asset: il vincolo \`e imposto sia dal modulo sia dallo smart contract.
+Registra l'impronta crittograficadi un asset e ne inizializza il contatore di view a zero on-chain. Deve precedere qualsiasi \texttt{POST /views} relativa allo stesso asset: il vincolo \`e imposto sia dal modulo sia dallo smart contract.
 
 \begin{lstlisting}[language=json, caption={Esempio di richiesta a \texttt{POST /assets/\{id\}/notarize}.}]
 POST /assets/asset_91f3b7/notarize HTTP/1.1
@@ -357,11 +370,13 @@ Content-Type: application/json
 }
 \end{lstlisting}
 
-\noindent \textbf{Risposta tipica:} \texttt{201 Created} con \texttt{txHash}, \texttt{blockNumber}, \texttt{chainId}; oppure \texttt{409 Conflict} se l'identificativo \`e gi\`a stato notarizzato.
+\noindent \textbf{Risposta tipica:} \texttt{201 Created} con l'identificativo, \texttt{contentHash}, \texttt{txHash} e \texttt{chainId}. Al momento della risposta la transazione \`e in stato \texttt{PENDING}: la conferma on-chain (e il relativo \texttt{blockNumber}) sopraggiunge in modo asincrono ed \`e accertata dalla riconciliazione. In caso di identificativo gi\`a notarizzato la risposta \`e \texttt{409 Conflict}.
 
 \subsection{POST \texttt{/views}}
 
-Registra una view valida proveniente dal core. La definizione di ``view valida'' (soglie temporali, scroll, anti-bot, esclusione di duplicati di sessione) \`e responsabilit\`a del core; il modulo si limita a registrare la view come ricevuta. L'\texttt{Idempotency-Key} \`e obbligatorio: il core lo genera univoco e lo reinvia identico in caso di retry, garantendo che doppi invii non producano doppi conteggi.
+Registra una view valida proveniente dal core, richiedendo una \texttt{Idempotency-Key}: il core la genera in maniera univoca e la ri-fornisce in caso di retry, garantendo che doppi invii non producano doppi conteggi.
+
+NOTA: La definizione di ``view valida'' (soglie temporali, scroll, anti-bot, esclusione di duplicati di sessione) \`e responsabilit\`a del core; il modulo si limita a registrare la view come ricevuta. 
 
 \begin{lstlisting}[language=json, caption={Esempio di richiesta a \texttt{POST /views}.}]
 POST /views HTTP/1.1
@@ -370,22 +385,16 @@ Idempotency-Key: 7b0e2f3c-91ad-4d3e-b211-3e4a8f1d2c9a
 
 {
   "assetId": "asset_91f3b7",
-  "readerHash": "0x8f3c...",
-  "sessionId": "sess_4a9b7d",
-  "occurredAt": "2026-06-03T14:32:11Z",
-  "evidence": {
-    "dwellMs": 38420,
-    "scrollPct": 73,
-    "viewType": "full_read"
-  }
+  "occurredAt": "2026-06-03T14:32:11Z"
 }
 \end{lstlisting}
 
 \noindent \textbf{Risposte:}
 \begin{itemize}[leftmargin=*, itemsep=0.1em]
-    \item \texttt{202 Accepted} -- view accettata. Il body restituisce l'\texttt{eventId} interno e il \texttt{periodId} di appartenenza.
-    \item \texttt{409 Conflict} -- l'\texttt{Idempotency-Key} \`e gi\`a stata vista, operazione no-op.
-    \item \texttt{400 Bad Request} -- payload malformato o asset non notarizzato.
+    \item \texttt{202 Accepted} -- view accettata. Il body restituisce l'\texttt{eventId} interno, il \texttt{periodId} di appartenenza e il flag \texttt{duplicate} (qui \texttt{false}).
+    \item \texttt{202 Accepted} con \texttt{duplicate: true} -- l'\texttt{Idempotency-Key} \`e gi\`a stata vista: la risposta \`e un \emph{replay idempotente} dell'esito originale (stesso \texttt{eventId}), non un errore.
+    \item \texttt{404 Not Found} -- l'asset indicato non \`e stato notarizzato.
+    \item \texttt{400 Bad Request} -- payload malformato.
 \end{itemize}
 
 \subsection{GET \texttt{/assets/\{assetId\}}}
@@ -397,6 +406,8 @@ Restituisce la notarizzazione dell'asset e il contatore cumulativo corrente dell
   "assetId": "asset_91f3b7",
   "contentHash": "0x9a72f1...8d4b",
   "notarizedAt": "2026-04-12T09:14:02Z",
+  "confirmedAt": "2026-04-12T09:15:40Z",
+  "status": "CONFIRMED",
   "totalViews": 1847,
   "anchoring": {
     "txHash": "0x9f8e7d...",
@@ -405,6 +416,8 @@ Restituisce la notarizzazione dell'asset e il contatore cumulativo corrente dell
   }
 }
 \end{lstlisting}
+
+\noindent Il campo \texttt{status} riflette il ciclo di vita on-chain (\texttt{PENDING}/\texttt{CONFIRMED}/\texttt{FAILED}); finch\'e la transazione non \`e confermata, \texttt{confirmedAt} e \texttt{anchoring.blockNumber} sono nulli.
 
 \subsection{GET \texttt{/chain/info}}
 
@@ -429,8 +442,9 @@ Espone le informazioni necessarie ad un soggetto esterno per condurre audit indi
     \item Il core calcola l'impronta cryptografica del contenuto da notarizzare.
     \item Il core invoca \texttt{POST /contracts/\{id\}/notarize} oppure \texttt{POST /assets/\{id\}/notarize}.
     \item Il modulo verifica che l'identificativo non sia gi\`a noto; in caso contrario, persiste lo stato di transazione pendente.
-    \item Il Chain Adapter firma ed invia la transazione on-chain.
-    \item Alla conferma della transazione, il modulo aggiorna lo stato locale e restituisce al core i riferimenti on-chain (\texttt{txHash}, \texttt{blockNumber}, \texttt{chainId}).
+    \item Il Chain Adapter firma ed invia la transazione on-chain; il modulo registra lo stato \texttt{PENDING} con il relativo \texttt{txHash}.
+    \item Il modulo risponde \emph{subito} al core con i riferimenti di invio (\texttt{txHash}, \texttt{chainId}), senza attendere la conferma on-chain.
+    \item In un momento successivo la riconciliazione accerta la conferma della transazione e porta lo stato a \texttt{CONFIRMED}, registrando il \texttt{blockNumber}.
 \end{enumerate}
 
 \subsection{Registrazione di una view}
@@ -439,11 +453,11 @@ Espone le informazioni necessarie ad un soggetto esterno per condurre audit indi
     \item Il fruitore consuma un contenuto sulla piattaforma Cardiofy.
     \item Il core valuta autonomamente se la fruizione costituisce una ``view valida'' secondo le proprie regole.
     \item In caso affermativo, il core invoca \texttt{POST /views} con i campi necessari ed una \texttt{Idempotency-Key} univoca.
-    \item Il modulo verifica l'idempotenza: se la chiave \`e gi\`a stata vista, risponde \texttt{409 Conflict} e termina.
-    \item Altrimenti calcola il \texttt{periodId} di appartenenza, persiste l'evento e risponde \texttt{202 Accepted}.
+    \item Il modulo verifica che l'asset sia notarizzato (altrimenti risponde \texttt{404}) e l'idempotenza della chiave.
+    \item Se la chiave \`e gi\`a stata vista, risponde \texttt{202 Accepted} con un \emph{replay idempotente} dell'esito originale (\texttt{duplicate: true}). Altrimenti calcola il \texttt{periodId} di appartenenza, persiste l'evento e risponde \texttt{202 Accepted} (\texttt{duplicate: false}).
 \end{enumerate}
 
-\noindent La registrazione \`e atomica e idempotente: il vincolo di unicit\`a sull'\texttt{Idempotency-Key} previene doppi conteggi anche in presenza di retry.
+\noindent La registrazione \`e atomica e idempotente: il vincolo di unicit\`a sull'\texttt{Idempotency-Key} previene doppi conteggi anche in presenza di retry, che vengono serviti come replay sicuri anzich\'e respinti come conflitti.
 
 \subsection{Pubblicazione del batch giornaliero}
 
@@ -456,6 +470,16 @@ Espone le informazioni necessarie ad un soggetto esterno per condurre audit indi
 \end{enumerate}
 
 \noindent Il flusso \`e resiliente ai crash: lo stato pendente permette di riprendere senza perdere dati o duplicare pubblicazioni; lo smart contract impone l'esistenza preventiva degli asset e tollera retry idempotenti.
+
+\subsection{Riconciliazione e conferma asincrona}
+
+Le transazioni inviate (notarizzazioni e batch) non sono attese in modo sincrono dalle richieste HTTP: un processo di riconciliazione, eseguito periodicamente, ne accerta lo stato effettivo on-chain.
+
+\begin{enumerate}[leftmargin=*, itemsep=0.1em]
+    \item Per ciascuna entit\`a in stato \texttt{PENDING} con transazione inviata, la riconciliazione legge il numero di conferme della transazione.
+    \item Raggiunta la profondit\`a di conferma richiesta, l'entit\`a passa a \texttt{CONFIRMED} e ne viene registrato il \texttt{blockNumber}; un errore isolato (es.\ RPC momentaneamente non raggiungibile) viene gestito senza bloccare il trattamento delle altre entit\`a.
+    \item \textbf{Verifica difensiva dei contatori.} Prima di confermare un batch, per ciascun asset coinvolto la riconciliazione confronta il contatore cumulativo \texttt{totalViews} letto on-chain con il valore mantenuto localmente. In caso di discrepanza il batch \emph{non} viene confermato (resta \texttt{PENDING}) e viene emesso un alert: \`e la rete di sicurezza contro manomissioni del log o anomalie di pubblicazione (cfr.\ sez.~\ref{sec:sicurezza}).
+\end{enumerate}
 
 \subsection{Audit pubblico}
 
@@ -470,6 +494,65 @@ L'audit pubblico non passa dal modulo. Un soggetto esterno (autore, auditor, reg
 \noindent La fiducia richiesta nei confronti di Cardiofy si riduce all'intervallo di tempo che precede la pubblicazione delle transazioni; una volta on-chain, ciascun dato \`e immutabile e verificabile da chiunque, senza intermediazione.
 
 % =============================================================================
+\section{Modello di verifica e identificatori pubblici}\label{sec:verifica}
+% =============================================================================
+
+La verificabilit\`a esterna \`e reale solo se chi verifica dispone di (i) un \emph{riferimento} all'entit\`a on-chain e (ii) la possibilit\`a di \emph{ricalcolare} l'impronta. Questa sezione definisce come il sistema fornisce entrambi.
+
+\subsection{Identificatori pubblici}
+
+L'identificatore on-chain svolge il solo compito di \emph{lookup}; la prova che un record on-chain corrisponde a un certo contenuto \`e data dal \texttt{contentHash}, indipendentemente dall'identificatore. Di conseguenza:
+
+\begin{itemize}[leftmargin=*, itemsep=0.1em]
+    \item Per asset e contratti, il core conia un \textbf{identificatore pubblico dedicato} — stabile, immutabile, non sequenziale e \emph{disaccoppiato} dalla chiave primaria interna del database. Pu\`o essere consegnato all'autore (per l'asset) o a entrambe le parti (per il contratto), anche via e-mail.
+    \item \textbf{Da non usare la chiave primaria del database} come identificatore pubblico: accoppierebbe il contratto pubblico a un dettaglio interno e, se sequenziale, ne consentirebbe l'enumerazione.
+    \item Il modulo \`e agnostico rispetto allo schema scelto: riceve l'identificatore come stringa e lo usa come chiave on-chain (passa attraverso un valore gi\`a in forma \texttt{bytes32}, altrimenti ne calcola \texttt{keccak256}). Un \textbf{DOI canonicalizzato} \`e un'ottima scelta quando disponibile, perch\'e \`e un riferimento pubblico riproducibile anche da una citazione.
+\end{itemize}
+
+\subsection{Il bundle di verifica}
+
+Alla \emph{conferma} on-chain, il core assembla e consegna all'autore (o, per i contratti, a entrambe le parti) un \emph{bundle di verifica} autosufficiente:
+
+\begin{itemize}[leftmargin=*, itemsep=0.1em]
+    \item l'\textbf{identificatore pubblico} e le coordinate della chain (\texttt{chainId}, indirizzo del contratto);
+    \item il \texttt{contentHash} registrato on-chain;
+    \item la \textbf{forma canonica del contenuto} (i byte effettivamente hashati, vedi sez.~\ref{sec:canonica}): \`e ci\`o che rende la verifica \emph{praticabile}, non solo teorica;
+    \item un collegamento all'esploratore di blocchi (il \texttt{txHash} \`e una comodit\`a, non il riferimento durevole, che resta la terna chain/contratto/identificatore + \texttt{contentHash});
+    \item data e blocco di notarizzazione.
+\end{itemize}
+
+\noindent Il \texttt{txHash} di notarizzazione \`e relativo all'\emph{invio} e la notarizzazione \`e asincrona: il bundle definitivo ha senso alla conferma. La forma canonica di un \emph{contratto} pu\`o contenere termini sensibili: va consegnata alle sole parti, su canale sicuro, e non compare mai on-chain (dove va solo l'impronta).
+
+\subsection{Forma canonica del contenuto}\label{sec:canonica}
+
+Perch\'e un autore possa ricalcolare il \texttt{contentHash}, deve poter riprodurre \emph{esattamente} i byte hashati. Il sistema fissa quindi una \textbf{forma canonica}, di propriet\`a del core e \emph{versionata}:
+
+\begin{enumerate}[leftmargin=*, itemsep=0.1em]
+    \item Il contenuto (asset o contratto) \`e rappresentato come un oggetto JSON che include un campo \texttt{schemaVersion}.
+    \item Le stringhe sono normalizzate in Unicode \textbf{NFC}.
+    \item L'oggetto \`e serializzato con la \emph{JSON Canonicalization Scheme} (RFC 8785, JCS): chiavi ordinate lessicograficamente, nessuno spazio insignificante, numeri in forma canonica, codifica UTF-8.
+    \item \texttt{contentHash} = \texttt{keccak256} dei byte UTF-8 della forma canonica.
+\end{enumerate}
+
+\noindent Un cambiamento dello schema \textbf{deve} incrementare \texttt{schemaVersion}; gli hash gi\`a pubblicati restano verificabili con la versione di schema originaria. Per gli identificatori derivati da DOI: l'identificatore \`e il DOI canonicalizzato (minuscolo, senza spazi, senza prefisso \texttt{https://doi.org/}, NFC) e la chiave on-chain \`e \texttt{keccak256} di tale stringa.
+
+\subsection{Istruzioni per il core}
+
+Per realizzare quanto sopra, il core:
+
+\begin{enumerate}[leftmargin=*, itemsep=0.1em]
+    \item conia un identificatore pubblico dedicato (o usa il DOI canonicalizzato) per ogni asset e contratto, immutabile e distinto dalla chiave primaria del DB;
+    \item costruisce la forma canonica del contenuto (JCS + NFC + \texttt{schemaVersion}) e calcola il \texttt{contentHash} come \texttt{keccak256} di tale forma;
+    \item invia al modulo \texttt{\{ identificatore, contentHash \}} tramite gli endpoint di notarizzazione;
+    \item attende la conferma (interrogando \texttt{GET /assets|contracts/\{id\}} finch\'e lo stato \`e \texttt{CONFIRMED}; in futuro tramite callback del modulo), poi assembla e consegna il bundle di verifica — alla dashboard come sede durevole, all'autore o a entrambe le parti del contratto, con notifica via e-mail;
+    \item mette a disposizione un \textbf{verificatore lato client} (preferibilmente open e indipendente) che ricalcola \texttt{keccak256} della forma canonica e lo confronta con il valore on-chain letto via RPC pubblico, \emph{non} tramite le API del modulo, per non reintrodurre la dipendenza dalla piattaforma.
+\end{enumerate}
+
+\subsection{Limiti: completezza}
+
+Questi meccanismi garantiscono \emph{integrit\`a} e \emph{non-ripudio} \emph{dato un riferimento}, ma non la \textbf{completezza}: non provano che la piattaforma abbia notarizzato \emph{tutti} gli asset rilevanti o che non ne abbia omessi. Una garanzia di completezza richiederebbe un impegno periodico all'insieme completo (es.\ una radice di Merkle del set di identificatori del periodo, ancorata on-chain) ed \`e esplicitamente fuori dallo scope di questa versione.
+
+% =============================================================================
 \section{Sicurezza}\label{sec:sicurezza}
 % =============================================================================
 
@@ -478,9 +561,11 @@ L'audit pubblico non passa dal modulo. Un soggetto esterno (autore, auditor, reg
 Il modulo \`e progettato avendo in mente le seguenti situazioni di rischio:
 
 \begin{description}[leftmargin=0.5cm, itemsep=0.2em]
-\item[Compromissione della chiave attester.] L'attaccante potrebbe pubblicare transazioni arbitrarie, contraffacendo notarizzazioni o conteggi. La chiave \`e custodita in un Key Management Service e mai esposta in chiaro al di fuori di esso; il suo utilizzo \`e limitato alla sola operazione di firma, autenticata via IAM. Un eventuale uso anomalo \`e rilevabile dal monitoraggio degli eventi on-chain.
+\item[Compromissione della chiave attester.] L'attaccante potrebbe pubblicare transazioni arbitrarie, contraffacendo \emph{nuove} notarizzazioni o conteggi. Il danno \`e per\`o intrinsecamente limitato: l'indirizzo dell'attester detiene solo i fondi per il pagamento del gas delle transazioni e lo smart contract rifiuta le sovrascritture, per cui una chiave compromessa pu\`o al pi\`u disturbare o falsificare scritture \emph{future}, mai riscrivere il passato gi\`a confermato. Nel modello attuale (allineato al resto dell'ecosistema Cardiofy) la chiave \`e dunque una \emph{hot wallet a basso valore} custodita come variabile d'ambiente del processo, con hardening di tipo procedurale; l'uso anomalo \`e rilevabile dal monitoraggio degli eventi on-chain. L'astrazione del firmatario \`e progettata per essere sostituibile: l'adozione di un Key Management Service (in cui la chiave non lascia mai il KMS e la firma \`e autenticata via IAM) \`e un'evoluzione gi\`a predisposta e raccomandata.
 
-\item[Compromissione della chiave owner.] L'attaccante potrebbe ruotare l'attester o trasferire la propriet\`a del contratto. In esercizio consolidato il ruolo di owner sar\`a affidato ad una multi-firma, in modo che la compromissione di una singola chiave non sia sufficiente ad alterare la governance del sistema.
+\item[Compromissione della chiave owner.] L'attaccante potrebbe ruotare l'attester o trasferire la propriet\`a del contratto. In esercizio consolidato il ruolo di owner potrebbe affidato ad una multi-firma, in modo che la compromissione di una singola chiave non sia sufficiente ad alterare la governance del sistema.
+
+\item[Accesso non autorizzato all'API del modulo.] Un soggetto diverso dal core potrebbe tentare di iniettare notarizzazioni o view. Tutti gli endpoint di business richiedono il token Bearer condiviso (confrontato in tempo costante), con autorizzazione \emph{secure-by-default}: un endpoint privo di marcatura esplicita di protezione viene comunque rifiutato. Restano volutamente accessibili senza autenticazione i soli endpoint infrastrutturali (sonde) e quello di audit pubblico.
 
 \item[Manomissione del log prima del batching.] Un attaccante interno con accesso alla base dati potrebbe alterare le righe del giorno in corso prima della pubblicazione. La protezione si articola in controlli di accesso sull'infrastruttura del modulo (non esposta pubblicamente) e in detect-ability a posteriori: ogni discrepanza fra log interno e contatori on-chain emerge alla riconciliazione.
 
@@ -491,18 +576,18 @@ Il modulo \`e progettato avendo in mente le seguenti situazioni di rischio:
 
 \subsection{Protezione dei dati personali}
 
-Il modulo \`e progettato per essere intrinsecamente compatibile con il GDPR:
+Il modulo \`e progettato per essere intrinsecamente compatibile con regolamentazioni privacy-by-default:
 
 \begin{itemize}[leftmargin=*, itemsep=0.1em]
-    \item I dati personali dei lettori, anche se ricevuti in forma pseudonima dal core, sono custoditi esclusivamente off-chain dove sono cancellabili in qualunque momento.
+    \item Il modulo non conserva dati personali dei lettori: per minimizzazione del dato, le identit\`a pseudonime e le evidence forensi restano nel core (loro titolare) e non vengono duplicate nel modulo. Ci\`o che il modulo registra per ciascuna view (asset, momento, periodo, chiave di idempotenza) non identifica una persona fisica.
     \item Sulla blockchain non viene mai pubblicato n\'e l'identit\`a del lettore, n\'e l'evento di lettura individuale, n\'e alcun dato che permetta la re-identificazione di una persona fisica.
-    \item Le strutture on-chain (impronte cryptografiche di contratti e asset, contatori cumulativi di view per asset) sono aggregati anonimi che non rivelano nulla sui singoli individui.
+    \item Le strutture on-chain (impronte crittografiche di contratti e asset, contatori cumulativi di view per asset) sono aggregati anonimi che non rivelano nulla sui singoli individui.
     \item Una richiesta di cancellazione comporta la rimozione dei record relativi nella base dati operativa; le impronte e i contatori on-chain restano validi rispetto ai dati al momento della loro pubblicazione, in quanto non contengono dati personali.
 \end{itemize}
 
 \subsection{Verificabilit\`a esterna}
 
-La propriet\`a centrale del modulo \`e che ogni informazione utile per l'audit (esistenza e impronta di un contratto, esistenza e impronta di un asset, contatore cumulativo delle view di un asset, storico per periodo delle view ricevute) sia direttamente leggibile dalla blockchain attraverso qualunque nodo RPC pubblico. Il modulo non \`e un intermediario necessario per la verifica esterna: la sua disponibilit\`a operativa non condiziona la possibilit\`a di un terzo di validare l'integrit\`a dei dati.
+La propriet\`a centrale del modulo \`e che ogni informazione utile per l'audit (esistenza e impronta di un contratto, esistenza e impronta di un asset, contatore cumulativo delle view di un asset, storico per periodo delle view ricevute) sia direttamente leggibile dalla blockchain attraverso qualunque nodo RPC pubblico, \emph{dato un riferimento} all'entit\`a (l'identificatore pubblico) e la possibilit\`a di ricalcolarne l'impronta dalla forma canonica del contenuto (sez.~\ref{sec:verifica}). Entro questi termini, il modulo non \`e un intermediario necessario per la verifica: la sua disponibilit\`a operativa non condiziona la possibilit\`a di un terzo di validare l'integrit\`a dei dati. Resta invece fuori portata la \emph{completezza} (provare che nulla \`e stato omesso), come discusso in sez.~\ref{sec:verifica}.
 
 \vfill
 \begin{center}

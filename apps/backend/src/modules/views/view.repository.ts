@@ -16,12 +16,9 @@ export class DrizzleViewRepository implements IViewRepository {
       id:             row.id,
       idempotencyKey: row.idempotencyKey,
       assetId:        row.assetId,
-      readerHash:     row.readerHash,
-      sessionId:      row.sessionId ?? null,
       occurredAt:     row.occurredAt,
       receivedAt:     row.receivedAt,
       periodId:       row.periodId,
-      evidence:       (row.evidence as Record<string, unknown> | null) ?? null,
       anchored:       row.anchored === 1,
       batchPeriodId:  row.batchPeriodId ?? null,
     });
@@ -40,11 +37,8 @@ export class DrizzleViewRepository implements IViewRepository {
         id:             input.id,
         idempotencyKey: input.idempotencyKey,
         assetId:        input.assetId,
-        readerHash:     input.readerHash,
-        sessionId:      input.sessionId,
         occurredAt:     input.occurredAt,
         periodId:       input.periodId,
-        evidence:       input.evidence,
       })
       .returning();
     if (!row) throw new Error('[ViewRepo] insert returned no rows');

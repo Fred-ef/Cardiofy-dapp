@@ -135,8 +135,9 @@ export function makeAppConfigMock(overrides?: Partial<AppConfig['env']>): AppCon
         CONFIRMATIONS: 1,
       },
       SCHEDULE: {
-        BATCH_CRON:     '0 0 * * *',
-        RECONCILE_CRON: '*/5 * * * *',
+        BATCH_CRON:      '0 0 * * *',
+        RECONCILE_CRON:  '*/5 * * * *',
+        BATCH_MAX_CHUNK: 300,
       },
       PUBLIC_AUDIT: {
         RPC_URL: 'https://rpc.sepolia.org',

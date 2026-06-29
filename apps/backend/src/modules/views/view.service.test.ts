@@ -17,10 +17,7 @@ describe('ViewService.register', () => {
   const baseCommand = {
     idempotencyKey: 'idem-key-1',
     assetId:        'asset-test-1',
-    readerHash:     '0xreader',
-    sessionId:      null as string | null,
     occurredAt:     new Date('2026-06-22T15:30:00Z'),
-    evidence:       null as Record<string, unknown> | null,
   };
 
   beforeEach(() => {

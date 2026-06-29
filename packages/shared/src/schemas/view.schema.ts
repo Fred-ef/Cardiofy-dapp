@@ -9,15 +9,14 @@ export const IdempotencyKeyHeaderSchema = z.object({
 export type IdempotencyKeyHeader = z.infer<typeof IdempotencyKeyHeaderSchema>;
 
 /**
- * Body atteso da POST /views. `evidence` è opaque al modulo: lo memorizziamo
- * come JSON ma non lo interpretiamo — è prova diagnostica per dispute future.
+ * Body atteso da POST /views. Per minimizzazione del dato (GDPR) e coerenza con il
+ * ruolo del modulo (integrità dei conteggi, non anagrafica), il modulo riceve solo
+ * ciò che gli serve: l'asset, il momento della view e l'Idempotency-Key (header).
+ * Identità pseudonima del lettore ed evidence forense restano nel core, loro owner.
  */
 export const ViewBodySchema = z.object({
   assetId:    OpaqueIdSchema,
-  readerHash: z.string().min(1).max(128),
-  sessionId:  z.string().min(1).max(128).optional(),
   occurredAt: z.iso.datetime(),
-  evidence:   z.record(z.string(), z.unknown()).optional(),
 }).strict();
 export type ViewBody = z.infer<typeof ViewBodySchema>;
 

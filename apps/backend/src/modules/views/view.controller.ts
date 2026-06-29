@@ -34,10 +34,7 @@ export class ViewController {
     const result = await this.service.register({
       idempotencyKey: headers['idempotency-key'],
       assetId:        body.assetId,
-      readerHash:     body.readerHash,
-      sessionId:      body.sessionId ?? null,
       occurredAt:     new Date(body.occurredAt),
-      evidence:       body.evidence ?? null,
     });
     return toViewResponse(result);
   }

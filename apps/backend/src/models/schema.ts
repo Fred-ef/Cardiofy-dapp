@@ -75,12 +75,9 @@ export const views = pgTable(
     id:             varchar('id', { length: 64 }).primaryKey(),   // ULID/UUID generato lato modulo
     idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
     assetId:        varchar('asset_id', { length: 128 }).notNull(),
-    readerHash:     varchar('reader_hash', { length: 128 }).notNull(),
-    sessionId:      varchar('session_id', { length: 128 }),
     occurredAt:     timestamp('occurred_at').notNull(),
     receivedAt:     timestamp('received_at').defaultNow().notNull(),
     periodId:       bigint('period_id', { mode: 'number' }).notNull(), // unix ts mezzanotte UTC
-    evidence:       jsonb('evidence'),
     // Stato di anchoring: false finché il batch del periodo non è on-chain.
     anchored:       integer('anchored').default(0).notNull(),
     batchPeriodId:  bigint('batch_period_id', { mode: 'number' }),
