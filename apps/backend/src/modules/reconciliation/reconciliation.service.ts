@@ -6,6 +6,7 @@ import type { INotaryGateway } from '#modules/notary/interfaces/i-notary.gateway
 import type { IAssetRepository } from '#modules/assets/interfaces/i-asset.repository.js';
 import type { IContractRepository } from '#modules/contracts/interfaces/i-contract.repository.js';
 import type { IBatchRepository } from '#modules/batches/interfaces/i-batch.repository.js';
+import type { IViewRepository } from '#modules/views/interfaces/i-view.repository.js';
 import type {
   IReconciliationService,
   ReconciliationRunSummary,
@@ -27,6 +28,7 @@ export class ReconciliationService implements IReconciliationService {
     @inject(DI_TOKENS.IContractRepository) private readonly contracts: IContractRepository,
     @inject(DI_TOKENS.IAssetRepository)    private readonly assets: IAssetRepository,
     @inject(DI_TOKENS.IBatchRepository)    private readonly batches: IBatchRepository,
+    @inject(DI_TOKENS.IViewRepository)     private readonly views: IViewRepository,
     @inject(DI_TOKENS.INotaryGateway)      private readonly gateway: INotaryGateway,
     @inject(DI_TOKENS.AppConfig)           config: AppConfig,
     @inject(DI_TOKENS.ILoggerService)      private readonly logger: ILoggerService,
@@ -91,21 +93,30 @@ export class ReconciliationService implements IReconciliationService {
     return counter;
   }
 
+  /**
+   * Riconciliazione dei batch in due fasi: (a) conferma i singoli chunk on-chain;
+   * (b) finalizza i periodi i cui chunk sono tutti confermati (mirror esattamente-una-volta
+   * + verifica difensiva TB-9b). Vedi ai-context/future-tasks/batch-chunking-plan.md.
+   */
   private async reconcileBatches(): Promise<ReconciliationCounters> {
-    const pending = await this.batches.findPendingWithTx();
-    const counter: ReconciliationCounters = { scanned: pending.length, confirmed: 0, stillPending: 0, failed: 0 };
-    await Promise.allSettled(pending.map(async (b) => {
-      if (b.txHash === null) { counter.stillPending++; return; }
+    await this.confirmPendingChunks();
+
+    const pendingPeriods = await this.batches.findPendingBatches();
+    const counter: ReconciliationCounters = { scanned: pendingPeriods.length, confirmed: 0, stillPending: 0, failed: 0 };
+    await Promise.allSettled(pendingPeriods.map(async (b) => {
       try {
-        const { confirmations, blockNumber } = await this.gateway.confirmations(b.txHash);
-        if (confirmations < this.confirmationDepth || blockNumber === null) {
-          counter.stillPending++;
-          return;
+        const chunks = await this.batches.findChunks(b.periodId);
+        const allConfirmed = chunks.length > 0 && chunks.every((c) => c.status === 'CONFIRMED');
+        if (!allConfirmed) { counter.stillPending++; return; }
+
+        // Mirror locale applicato esattamente una volta per periodo (flag `mirrorApplied`),
+        // prima della verifica difensiva: così il confronto on-chain vs mirror è consistente.
+        if (!b.mirrorApplied) {
+          for (const u of b.payload) await this.assets.incrementMirrorViews(u.assetId, u.viewsInPeriod);
+          await this.batches.markMirrorApplied(b.periodId);
         }
 
-        // Verifica difensiva (TB-9b): per ciascun asset toccato dal batch,
-        // confrontiamo il contatore on-chain col mirror locale. Mismatch ⇒
-        // alert + non marcare CONFIRMED (resta PENDING, sarà ritentato).
+        // Verifica difensiva (TB-9b), a periodo completo: contatore on-chain vs mirror locale.
         const mismatch = await this.detectAssetCounterMismatch(b.payload);
         if (mismatch) {
           counter.stillPending++;
@@ -122,14 +133,32 @@ export class ReconciliationService implements IReconciliationService {
           return;
         }
 
+        const blockNumber = Math.max(...chunks.map((c) => c.blockNumber ?? 0));
         await this.batches.markConfirmed(b.periodId, blockNumber, new Date());
+        await this.views.markPeriodAnchored(b.periodId);
         counter.confirmed++;
       } catch (err) {
         counter.failed++;
-        this.logger.error('[Reconciliation] batch failed', err, { periodId: b.periodId });
+        this.logger.error('[Reconciliation] batch finalize failed', err, { periodId: b.periodId });
       }
     }));
     return counter;
+  }
+
+  /** Fase (a): porta a CONFIRMED i chunk PENDING con txHash che hanno raggiunto la profondità di conferma. */
+  private async confirmPendingChunks(): Promise<void> {
+    const chunks = await this.batches.findPendingChunksWithTx();
+    await Promise.allSettled(chunks.map(async (c) => {
+      if (c.txHash === null) return;
+      try {
+        const { confirmations, blockNumber } = await this.gateway.confirmations(c.txHash);
+        if (confirmations >= this.confirmationDepth && blockNumber !== null) {
+          await this.batches.markChunkConfirmed(c.periodId, c.chunkIndex, blockNumber, new Date());
+        }
+      } catch (err) {
+        this.logger.error('[Reconciliation] chunk confirm failed', err, { periodId: c.periodId, chunkIndex: c.chunkIndex });
+      }
+    }));
   }
 
   /**

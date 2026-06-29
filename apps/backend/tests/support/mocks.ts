@@ -60,12 +60,19 @@ export function makeViewRepoMock(): IViewRepository {
 
 export function makeBatchRepoMock(): IBatchRepository {
   return {
-    findByPeriodId:    vi.fn().mockResolvedValue(null),
-    createPending:     vi.fn(),
-    markSubmitted:     vi.fn().mockResolvedValue(undefined),
-    markConfirmed:     vi.fn().mockResolvedValue(undefined),
-    markFailed:        vi.fn().mockResolvedValue(undefined),
-    findPendingWithTx: vi.fn().mockResolvedValue([]),
+    findByPeriodId:          vi.fn().mockResolvedValue(null),
+    createPending:           vi.fn(),
+    markSubmitted:           vi.fn().mockResolvedValue(undefined),
+    markConfirmed:           vi.fn().mockResolvedValue(undefined),
+    markFailed:              vi.fn().mockResolvedValue(undefined),
+    markMirrorApplied:       vi.fn().mockResolvedValue(undefined),
+    findPendingBatches:      vi.fn().mockResolvedValue([]),
+    ensureChunks:            vi.fn().mockResolvedValue(undefined),
+    findChunks:              vi.fn().mockResolvedValue([]),
+    findPendingChunksWithTx: vi.fn().mockResolvedValue([]),
+    markChunkSubmitted:      vi.fn().mockResolvedValue(undefined),
+    markChunkFailed:         vi.fn().mockResolvedValue(undefined),
+    markChunkConfirmed:      vi.fn().mockResolvedValue(undefined),
   };
 }
 

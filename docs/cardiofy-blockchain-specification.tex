@@ -142,7 +142,7 @@
 
 \item[Stato on-chain] Ciclo di vita di ogni entit\`a notarizzata (contratto, asset, batch) nella base dati del modulo: \texttt{PENDING} (transazione inviata, non ancora confermata), \texttt{CONFIRMED} (confermata on-chain) o \texttt{FAILED} (invio fallito).
 
-\item[Batch giornaliero] Insieme delle letture (\emph{view}) registrate in una finestra giornaliera, aggregate per asset e pubblicate on-chain in un'unica transazione che aggiorna i contatori cumulativi degli asset coinvolti.
+\item[Batch giornaliero] Insieme delle letture (\emph{view}) registrate in una finestra giornaliera, aggregate per asset e pubblicate on-chain in una o pi\`u transazioni (\emph{chunk}) che aggiornano i contatori cumulativi degli asset coinvolti.
 
 \item[Contratto] Entit\`a del core che rappresenta un accordo (es. autore--editore). Nel modulo blockchain ne viene custodita on-chain un'impronta crittografica, a garanzia di immutabilit\`a e tracciabilit\`a dell'accordo nel tempo.
 
@@ -213,7 +213,7 @@ La figura~\ref{fig:topologia} sintetizza i componenti del modulo e le loro relaz
 \begin{description}[leftmargin=0.5cm, itemsep=0.2em]
 \item[REST API:] Punto di ingresso sincrono per il core Cardiofy. Riceve le notifiche di view validate dal core e le richieste di notarizzazione di nuovi contratti e nuovi asset. Espone inoltre interrogazioni sullo stato delle entit\`a notarizzate e dei batch pubblicati. L'accesso \`e protetto da autenticazione a token condiviso col core (sez.~\ref{sec:sicurezza}); a ciascun endpoint si applica validazione sia dell'ingresso sia dell'uscita rispetto a uno schema condiviso (da integrare nel core).
 
-\item[Batch Worker:] Processo schedulato giornaliero: aggrega le view del giorno precedente per asset e ne richiede la pubblicazione on-chain in un'unica transazione.
+\item[Batch Worker:] Processo schedulato giornaliero: aggrega le view del giorno precedente per asset e ne richiede la pubblicazione on-chain in una o pi\`u transazioni (\emph{chunk}, sotto al limite di gas di blocco).
 
 \item[Reconciliation Worker:] Processo schedulato ad alta frequenza che porta a conferma le notarizzazioni e i batch in stato \texttt{PENDING} non appena raggiungono la profondit\`a di conferma richiesta, e applica una verifica difensiva confrontando i contatori cumulativi on-chain con quelli mantenuti localmente (sez.~\ref{sec:flussi}). Entrambi i worker si disattivano automaticamente in assenza della configurazione on-chain.
 
@@ -261,7 +261,7 @@ Al termine di ciascuna giornata, il worker:
     \item seleziona tutte le view del periodo;
     \item aggrega per \texttt{assetId} sommando i conteggi;
     \item costruisce la lista di aggiornamenti \texttt{(assetId, viewsInPeriod)};
-    \item invoca lo smart contract con un'unica transazione che incrementa i contatori cumulativi (\texttt{totalViews}) degli asset interessati ed emette un evento per ciascun asset aggiornato.
+    \item invoca lo smart contract con una o pi\`u transazioni (\emph{chunk}) che incrementano i contatori cumulativi (\texttt{totalViews}) degli asset interessati ed emettono un evento per ciascun asset aggiornato.
 \end{enumerate}
 
 \noindent A ogni batch, ogni asset \emph{attivo nel giorno} vede il proprio contatore cumulativo aggiornato di un valore pari al numero di view ricevute. Lo storico periodo-per-periodo si ricostruisce dagli eventi indicizzati emessi dal contratto.
@@ -465,11 +465,13 @@ Espone le informazioni necessarie ad un soggetto esterno per condurre audit indi
     \item A mezzanotte UTC (con un piccolo delay tecnico), il Batch Worker si attiva.
     \item Calcola il \texttt{periodId} del giorno appena concluso.
     \item Seleziona tutti gli eventi del periodo e li aggrega per \texttt{assetId}.
-    \item Compila la lista di aggiornamenti \texttt{(assetId, viewsInPeriod)} e ne richiede l'invio in un'unica transazione \texttt{publishBatch}.
-    \item Alla conferma della transazione, il modulo marca le view come ``anchorate'' e registra il riferimento on-chain del batch.
+    \item Ordina gli aggregati in modo deterministico e li suddivide in \emph{chunk} di dimensione limitata, inviando ciascun chunk con una propria transazione \texttt{publishBatch}.
+    \item Invia solo i chunk non ancora sottomessi e non re-invia mai un chunk gi\`a inviato. La conferma, l'aggiornamento dei contatori locali e la marcatura delle view come ``anchorate'' avvengono in riconciliazione (sezione seguente).
 \end{enumerate}
 
-\noindent Il flusso \`e resiliente ai crash: lo stato pendente permette di riprendere senza perdere dati o duplicare pubblicazioni; lo smart contract impone l'esistenza preventiva degli asset e tollera retry idempotenti.
+\noindent\textbf{Perch\'e in pi\`u transazioni (chunking).} Una singola transazione non pu\`o superare il limite di gas di un blocco: oltre alcune centinaia di asset aggiornati, un'unica \texttt{publishBatch} fallirebbe. Il batch viene perci\`o spezzato in chunk, ciascuno pubblicato separatamente. Poich\'e \texttt{publishBatch} \`e \emph{additivo} (somma i conteggi), un eventuale ri-tentativo non deve ri-applicare chunk gi\`a confermati: per questo lo stato di ogni chunk \`e tracciato (checkpoint) e un chunk gi\`a sottomesso non viene mai re-inviato.
+
+\noindent Il flusso \`e resiliente ai crash: lo stato pendente per-chunk permette di riprendere esattamente da dove si era interrotti, senza perdere dati n\'e duplicare conteggi; lo smart contract impone l'esistenza preventiva degli asset.
 
 \subsection{Riconciliazione e conferma asincrona}
 
@@ -478,7 +480,8 @@ Le transazioni inviate (notarizzazioni e batch) non sono attese in modo sincrono
 \begin{enumerate}[leftmargin=*, itemsep=0.1em]
     \item Per ciascuna entit\`a in stato \texttt{PENDING} con transazione inviata, la riconciliazione legge il numero di conferme della transazione.
     \item Raggiunta la profondit\`a di conferma richiesta, l'entit\`a passa a \texttt{CONFIRMED} e ne viene registrato il \texttt{blockNumber}; un errore isolato (es.\ RPC momentaneamente non raggiungibile) viene gestito senza bloccare il trattamento delle altre entit\`a.
-    \item \textbf{Verifica difensiva dei contatori.} Prima di confermare un batch, per ciascun asset coinvolto la riconciliazione confronta il contatore cumulativo \texttt{totalViews} letto on-chain con il valore mantenuto localmente. In caso di discrepanza il batch \emph{non} viene confermato (resta \texttt{PENDING}) e viene emesso un alert: \`e la rete di sicurezza contro manomissioni del log o anomalie di pubblicazione (cfr.\ sez.~\ref{sec:sicurezza}).
+    \item \textbf{Batch in due fasi.} Per un batch suddiviso in chunk, la riconciliazione prima conferma i singoli chunk e poi \emph{finalizza il periodo} solo quando \emph{tutti} i suoi chunk sono confermati: a quel punto applica l'aggiornamento dei contatori locali \emph{una sola volta} ed esegue la verifica difensiva.
+    \item \textbf{Verifica difensiva dei contatori.} Prima di confermare definitivamente un periodo, per ciascun asset coinvolto la riconciliazione confronta il contatore cumulativo \texttt{totalViews} letto on-chain con il valore mantenuto localmente. In caso di discrepanza il batch \emph{non} viene confermato (resta \texttt{PENDING}) e viene emesso un alert: \`e la rete di sicurezza contro manomissioni del log o anomalie di pubblicazione (cfr.\ sez.~\ref{sec:sicurezza}).
 \end{enumerate}
 
 \subsection{Audit pubblico}
