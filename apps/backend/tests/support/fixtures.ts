@@ -64,12 +64,9 @@ export const fixtures = {
       id:             overrides?.id             ?? 'view-1',
       idempotencyKey: overrides?.idempotencyKey ?? 'idem-1',
       assetId:        overrides?.assetId        ?? 'asset-test-1',
-      readerHash:     '0xreader',
-      sessionId:      'sess-1',
       occurredAt,
       receivedAt:     occurredAt,
       periodId:       overrides?.periodId       ?? 1750636800,
-      evidence:       null,
       anchored:       false,
       batchPeriodId:  null,
     });

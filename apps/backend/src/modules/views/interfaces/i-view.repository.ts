@@ -4,11 +4,8 @@ export interface RegisterViewInput {
   id:             string;
   idempotencyKey: string;
   assetId:        string;
-  readerHash:     string;
-  sessionId:      string | null;
   occurredAt:     Date;
   periodId:       number;
-  evidence:       Record<string, unknown> | null;
 }
 
 export interface AssetAggregate {

@@ -36,12 +36,9 @@ CREATE TABLE "views" (
 	"id" varchar(64) PRIMARY KEY NOT NULL,
 	"idempotency_key" varchar(128) NOT NULL,
 	"asset_id" varchar(128) NOT NULL,
-	"reader_hash" varchar(128) NOT NULL,
-	"session_id" varchar(128),
 	"occurred_at" timestamp NOT NULL,
 	"received_at" timestamp DEFAULT now() NOT NULL,
 	"period_id" bigint NOT NULL,
-	"evidence" jsonb,
 	"anchored" integer DEFAULT 0 NOT NULL,
 	"batch_period_id" bigint
 );

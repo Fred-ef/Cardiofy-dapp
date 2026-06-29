@@ -6,8 +6,6 @@ import type { IViewService } from '#modules/views/interfaces/i-view.service.js';
 
 const validBody = {
   assetId:    'asset-1',
-  readerHash: '0xreader',
-  sessionId:  'sess-1',
   occurredAt: '2026-06-22T14:00:00Z',
 };
 
@@ -64,7 +62,7 @@ describe('ViewController (HTTP integration)', () => {
     const res = await request(app.app)
       .post('/api/v1/views')
       .set('Idempotency-Key', 'idem-' + 'x'.repeat(20))
-      .send({ readerHash: '0xreader', occurredAt: '2026-06-22T14:00:00Z' });
+      .send({ occurredAt: '2026-06-22T14:00:00Z' });
     expect(res.status).toBe(400);
   });
 });

@@ -29,11 +29,8 @@ export class ViewService implements IViewService {
       id,
       idempotencyKey: cmd.idempotencyKey,
       assetId:        cmd.assetId,
-      readerHash:     cmd.readerHash,
-      sessionId:      cmd.sessionId,
       occurredAt:     cmd.occurredAt,
       periodId,
-      evidence:       cmd.evidence,
     });
     return { eventId: view.id, periodId: view.periodId, duplicate: false };
   }

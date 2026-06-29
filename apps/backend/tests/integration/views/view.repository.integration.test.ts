@@ -10,11 +10,8 @@ function baseView(input: Partial<{ id: string; idempotencyKey: string; assetId: 
     id:             input.id ?? `view-${Math.random().toString(36).slice(2, 10)}`,
     idempotencyKey: input.idempotencyKey ?? `idem-${Math.random().toString(36).slice(2, 10)}`,
     assetId:        input.assetId ?? 'asset-1',
-    readerHash:     '0xreader',
-    sessionId:      null,
     occurredAt:     new Date('2026-06-22T12:00:00Z'),
     periodId:       input.periodId ?? PERIOD_A,
-    evidence:       null,
   };
 }
 

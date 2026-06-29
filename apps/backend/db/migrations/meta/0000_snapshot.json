@@ -1,5 +1,5 @@
 {
-  "id": "d3ebf4ab-fa3d-447d-b840-d11fc4e06ed0",
+  "id": "b3c54dba-4187-4081-a0eb-11881630de71",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -251,18 +251,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "reader_hash": {
-          "name": "reader_hash",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "occurred_at": {
           "name": "occurred_at",
           "type": "timestamp",
@@ -281,12 +269,6 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
-        },
-        "evidence": {
-          "name": "evidence",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "anchored": {
           "name": "anchored",
