@@ -57,17 +57,47 @@ describe('DrizzleBatchRepository (integration)', () => {
     expect(fetched?.confirmedAt?.toISOString()).toBe(when.toISOString());
   });
 
-  it('findPendingWithTx returns only PENDING + txHash batches', async () => {
+  it('markMirrorApplied sets the flag', async () => {
     await repo.createPending({ periodId: PERIOD, assetCount: 0, viewsTotal: 0, payload: [] });
-    // No tx → not returned.
-    await repo.createPending({ periodId: PERIOD + 86_400, assetCount: 0, viewsTotal: 0, payload: [] });
-    await repo.markSubmitted(PERIOD + 86_400, TX);
-    // Submitted then confirmed → not returned.
-    await repo.createPending({ periodId: PERIOD + 172_800, assetCount: 0, viewsTotal: 0, payload: [] });
-    await repo.markSubmitted(PERIOD + 172_800, TX);
-    await repo.markConfirmed(PERIOD + 172_800, 1, new Date());
+    await repo.markMirrorApplied(PERIOD);
+    expect((await repo.findByPeriodId(PERIOD))?.mirrorApplied).toBe(true);
+  });
 
-    const pending = await repo.findPendingWithTx();
-    expect(pending.map((b) => b.periodId)).toEqual([PERIOD + 86_400]);
+  it('findPendingBatches returns only PENDING batches', async () => {
+    await repo.createPending({ periodId: PERIOD, assetCount: 0, viewsTotal: 0, payload: [] });
+    await repo.createPending({ periodId: PERIOD + 86_400, assetCount: 0, viewsTotal: 0, payload: [] });
+    await repo.markConfirmed(PERIOD + 86_400, 1, new Date());
+
+    const pending = await repo.findPendingBatches();
+    expect(pending.map((b) => b.periodId)).toEqual([PERIOD]);
+  });
+
+  it('ensureChunks is idempotent and findChunks returns chunks ordered by index', async () => {
+    const slices = [
+      [{ assetId: 'a', viewsInPeriod: 1 }, { assetId: 'b', viewsInPeriod: 2 }],
+      [{ assetId: 'c', viewsInPeriod: 3 }],
+    ];
+    await repo.ensureChunks(PERIOD, slices);
+    await repo.ensureChunks(PERIOD, slices); // idempotente: nessun duplicato
+
+    const chunks = await repo.findChunks(PERIOD);
+    expect(chunks.map((c) => c.chunkIndex)).toEqual([0, 1]);
+    expect(chunks[0]?.payload).toEqual(slices[0]);
+    expect(chunks.every((c) => c.status === 'PENDING')).toBe(true);
+  });
+
+  it('chunk lifecycle: submit → findPendingChunksWithTx → confirm', async () => {
+    await repo.ensureChunks(PERIOD, [[{ assetId: 'a', viewsInPeriod: 1 }]]);
+    await repo.markChunkSubmitted(PERIOD, 0, TX);
+
+    const pendingWithTx = await repo.findPendingChunksWithTx();
+    expect(pendingWithTx.map((c) => [c.periodId, c.chunkIndex])).toEqual([[PERIOD, 0]]);
+
+    const when = new Date('2026-06-22T04:00:00Z');
+    await repo.markChunkConfirmed(PERIOD, 0, 77, when);
+    expect(await repo.findPendingChunksWithTx()).toEqual([]); // ora CONFIRMED, non più pending
+    const [chunk] = await repo.findChunks(PERIOD);
+    expect(chunk?.status).toBe('CONFIRMED');
+    expect(chunk?.blockNumber).toBe(77);
   });
 });

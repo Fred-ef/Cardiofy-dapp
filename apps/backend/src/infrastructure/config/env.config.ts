@@ -40,6 +40,8 @@ const envSchema = z.object({
   // Schedule cron (croner format)
   BATCH_CRON: z.string().default('0 0 * * *'),
   RECONCILE_CRON: z.string().default('*/5 * * * *'),
+  // Massimo numero di asset per singola transazione `publishBatch`, sotto al gas-limit di blocco.
+  BATCH_MAX_CHUNK: z.coerce.number().int().positive().default(300),
 
   // Auth between core and module — token condiviso (Bearer). Opzionale: se assente,
   // l'auth è disabilitata (utile per dev locale). OBBLIGATORIO in production.
@@ -93,6 +95,7 @@ export const createEnvConfig = (rawProcessEnv: unknown) => {
     SCHEDULE: {
       BATCH_CRON: parsed.data.BATCH_CRON,
       RECONCILE_CRON: parsed.data.RECONCILE_CRON,
+      BATCH_MAX_CHUNK: parsed.data.BATCH_MAX_CHUNK,
     },
     AUTH: {
       ENABLED: parsed.data.AUTH_ENABLED,

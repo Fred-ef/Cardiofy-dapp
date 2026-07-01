@@ -4,7 +4,7 @@
 import { Asset } from '#modules/assets/asset.domain.js';
 import { Contract } from '#modules/contracts/contract.domain.js';
 import { View } from '#modules/views/view.domain.js';
-import { Batch } from '#modules/batches/batch.domain.js';
+import { Batch, BatchChunk } from '#modules/batches/batch.domain.js';
 
 const HASH_A   = '0x' + 'aa'.repeat(32);
 const HASH_B   = '0x' + 'bb'.repeat(32);
@@ -78,20 +78,42 @@ export const fixtures = {
     viewsTotal: number;
     status: 'PENDING' | 'CONFIRMED' | 'FAILED';
     txHash: string | null;
+    mirrorApplied: boolean;
   }>): Batch {
     return Batch.reconstitute({
-      periodId:    overrides?.periodId   ?? 1750636800,
-      assetCount:  overrides?.assetCount ?? 2,
-      viewsTotal:  overrides?.viewsTotal ?? 5,
-      status:      overrides?.status     ?? 'PENDING',
-      txHash:      overrides?.txHash     ?? null,
-      blockNumber: null,
-      createdAt:   new Date('2026-06-22T00:05:00Z'),
-      confirmedAt: null,
-      payload:     [
+      periodId:      overrides?.periodId   ?? 1750636800,
+      assetCount:    overrides?.assetCount ?? 2,
+      viewsTotal:    overrides?.viewsTotal ?? 5,
+      status:        overrides?.status     ?? 'PENDING',
+      txHash:        overrides?.txHash     ?? null,
+      blockNumber:   null,
+      createdAt:     new Date('2026-06-22T00:05:00Z'),
+      confirmedAt:   null,
+      payload:       [
         { assetId: 'asset-test-1', viewsInPeriod: 3 },
         { assetId: 'asset-test-2', viewsInPeriod: 2 },
       ],
+      mirrorApplied: overrides?.mirrorApplied ?? false,
+    });
+  },
+
+  batchChunk(overrides?: Partial<{
+    periodId: number;
+    chunkIndex: number;
+    payload: { assetId: string; viewsInPeriod: number }[];
+    status: 'PENDING' | 'CONFIRMED' | 'FAILED';
+    txHash: string | null;
+    blockNumber: number | null;
+  }>): BatchChunk {
+    return BatchChunk.reconstitute({
+      periodId:    overrides?.periodId    ?? 1750636800,
+      chunkIndex:  overrides?.chunkIndex  ?? 0,
+      payload:     overrides?.payload     ?? [{ assetId: 'asset-test-1', viewsInPeriod: 3 }],
+      status:      overrides?.status      ?? 'PENDING',
+      txHash:      overrides?.txHash      ?? null,
+      blockNumber: overrides?.blockNumber ?? null,
+      createdAt:   new Date('2026-06-22T00:05:00Z'),
+      confirmedAt: null,
     });
   },
 };

@@ -1,21 +1,28 @@
 import { inject, injectable } from 'tsyringe';
 import { DI_TOKENS } from '#infrastructure/di/tokens.js';
 import { NotFoundError } from '#errors/not-found.error.js';
+import type { AppConfig } from '#infrastructure/config/index.js';
 import type { ILoggerService } from '#infrastructure/logger/interfaces/i-logger.service.js';
 import type { INotaryGateway } from '#modules/notary/interfaces/i-notary.gateway.js';
 import type { IViewRepository } from '#modules/views/interfaces/i-view.repository.js';
-import type { IAssetRepository } from '#modules/assets/interfaces/i-asset.repository.js';
-import type { Batch } from './batch.domain.js';
+import type { Batch, BatchUpdate } from './batch.domain.js';
 import type { IBatchRepository } from './interfaces/i-batch.repository.js';
 import type { IBatchService } from './interfaces/i-batch.service.js';
+
+/** Taglia un array in slice di al più `size` elementi. */
+function chunkBy<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 @injectable()
 export class BatchService implements IBatchService {
   constructor(
     @inject(DI_TOKENS.IBatchRepository) private readonly repo: IBatchRepository,
     @inject(DI_TOKENS.IViewRepository)  private readonly views: IViewRepository,
-    @inject(DI_TOKENS.IAssetRepository) private readonly assets: IAssetRepository,
     @inject(DI_TOKENS.INotaryGateway)   private readonly gateway: INotaryGateway,
+    @inject(DI_TOKENS.AppConfig)        private readonly config: AppConfig,
     @inject(DI_TOKENS.ILoggerService)   private readonly logger: ILoggerService,
   ) {}
 
@@ -25,10 +32,15 @@ export class BatchService implements IBatchService {
     return Math.floor(ms / 1000) - 86_400;
   }
 
+  /**
+   * Pubblica il batch di un periodo in uno o più chunk (sotto al gas-limit di blocco).
+   * Idempotente e ripartibile: invia solo i chunk mai sottomessi. Conferma, aggiornamento
+   * del mirror e verifica difensiva avvengono in riconciliazione (`ReconciliationService`).
+   */
   async publishBatchFor(periodId: number): Promise<Batch | null> {
     const existing = await this.repo.findByPeriodId(periodId);
-    if (existing && existing.status !== 'FAILED') {
-      this.logger.info(`[BatchService] periodo ${periodId} già pubblicato (status=${existing.status})`);
+    if (existing && existing.status === 'CONFIRMED') {
+      this.logger.info(`[BatchService] periodo ${periodId} già confermato`);
       return existing;
     }
 
@@ -38,30 +50,41 @@ export class BatchService implements IBatchService {
       return null;
     }
 
-    const viewsTotal = aggregates.reduce((acc, a) => acc + a.viewsInPeriod, 0);
-    const batch = await this.repo.createPending({
-      periodId,
-      assetCount: aggregates.length,
-      viewsTotal,
-      payload: aggregates,
-    });
+    // Chunk deterministici: ordina per assetId e taglia a `BATCH_MAX_CHUNK`. Lo stesso periodo
+    // produce sempre gli stessi slice → un retry rimanda esattamente lo stesso chunk.
+    const maxChunk = this.config.env.SCHEDULE.BATCH_MAX_CHUNK;
+    const sorted = [...aggregates].sort((a, b) => a.assetId.localeCompare(b.assetId));
+    const slices: BatchUpdate[][] = chunkBy(sorted, maxChunk);
 
-    try {
-      const { txHash } = await this.gateway.publishBatch(periodId, aggregates);
-      await this.repo.markSubmitted(periodId, txHash);
-      // Mirror locale: aggiorna il contatore di ogni asset attivo nel periodo.
-      // (in produzione, da affiancare a riconciliazione via eventi on-chain).
-      for (const agg of aggregates) {
-        await this.assets.incrementMirrorViews(agg.assetId, agg.viewsInPeriod);
+    const viewsTotal = sorted.reduce((acc, a) => acc + a.viewsInPeriod, 0);
+    const batch =
+      existing ??
+      (await this.repo.createPending({ periodId, assetCount: sorted.length, viewsTotal, payload: sorted }));
+    await this.repo.ensureChunks(periodId, slices); // idempotente su (periodId, chunkIndex)
+
+    // Invia SOLO i chunk mai sottomessi (txHash null). Un chunk PENDING-con-txHash NON si re-invia:
+    // potrebbe essere in mempool o già applicato → lo risolve la riconciliazione (anti doppio conteggio).
+    const chunks = await this.repo.findChunks(periodId);
+    let periodTxSet = Boolean(existing?.txHash);
+    let sent = 0;
+    for (const c of chunks) {
+      if (c.txHash !== null) continue;
+      try {
+        const { txHash } = await this.gateway.publishBatch(periodId, c.payload);
+        await this.repo.markChunkSubmitted(periodId, c.chunkIndex, txHash);
+        sent++;
+        if (!periodTxSet) {
+          await this.repo.markSubmitted(periodId, txHash); // txHash rappresentativo del periodo (primo chunk)
+          periodTxSet = true;
+        }
+      } catch (err) {
+        await this.repo.markChunkFailed(periodId, c.chunkIndex);
+        this.logger.error('[BatchService] invio chunk fallito', err, { periodId, chunkIndex: c.chunkIndex });
+        // non rilancio: gli altri chunk proseguono; il periodo resta PENDING e verrà ritentato
       }
-      await this.views.markPeriodAnchored(periodId);
-      this.logger.info(`[BatchService] batch periodo ${periodId} pubblicato tx=${txHash}`);
-      return batch;
-    } catch (err) {
-      await this.repo.markFailed(periodId);
-      this.logger.error('[BatchService] publishBatch on-chain failed', err, { periodId });
-      throw err;
     }
+    this.logger.info(`[BatchService] periodo ${periodId}: ${slices.length} chunk, ${sent} inviati in questo tick`);
+    return batch;
   }
 
   async get(periodId: number): Promise<Batch> {
