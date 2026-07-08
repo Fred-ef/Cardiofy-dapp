@@ -40,7 +40,7 @@ describe('BatchJob', () => {
   });
 
   it('runOnce logs success when a batch is published', async () => {
-    vi.mocked(service.yesterdayPeriodId).mockReturnValue(123);
+    vi.mocked(service.previousPeriodId).mockReturnValue(123);
     vi.mocked(service.publishBatchFor).mockResolvedValue({ periodId: 123 } as never);
     const job = new BatchJob(service, makeAppConfigMock(), logger);
 

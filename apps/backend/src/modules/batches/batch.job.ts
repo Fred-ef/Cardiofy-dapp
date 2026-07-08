@@ -6,9 +6,10 @@ import type { ILoggerService } from '#infrastructure/logger/interfaces/i-logger.
 import type { IBatchService } from './interfaces/i-batch.service.js';
 
 /**
- * Schedula la pubblicazione del batch giornaliero.
- * Default: 00:00 UTC (BATCH_CRON='0 0 * * *'). Pubblica gli aggregati del giorno
- * precedente. Si avvia solo se la configurazione on-chain (RPC/KEY/CONTRACT) è
+ * Schedula la pubblicazione periodica del batch: ad ogni tick pubblica l'ultimo periodo
+ * chiuso. Ampiezza del periodo (BATCH_PERIOD_SECONDS) e cadenza del cron (BATCH_CRON) sono
+ * configurabili indipendentemente ma vanno allineate (default: entrambe giornaliere, batch
+ * a mezzanotte UTC). Si avvia solo se la configurazione on-chain (RPC/KEY/CONTRACT) è
  * presente; altrimenti rimane disabilitato.
  */
 @injectable()
@@ -37,7 +38,7 @@ export class BatchJob {
   }
 
   private runOnce(): void {
-    const periodId = this.service.yesterdayPeriodId();
+    const periodId = this.service.previousPeriodId();
     this.service
       .publishBatchFor(periodId)
       .then((batch) => {

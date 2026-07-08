@@ -34,12 +34,24 @@ describe('BatchService', () => {
     service   = makeService();
   });
 
-  describe('yesterdayPeriodId', () => {
-    it('returns the unix timestamp of the previous UTC midnight', () => {
+  describe('previousPeriodId', () => {
+    it('returns the unix timestamp of the previous UTC midnight (default BATCH_PERIOD_SECONDS=86400)', () => {
       const now      = new Date();
       const midnight = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 1000);
       const expected = midnight - 86_400;
-      expect(service.yesterdayPeriodId()).toBe(expected);
+      expect(service.previousPeriodId()).toBe(expected);
+    });
+
+    it('honors a configured BATCH_PERIOD_SECONDS narrower than a day', () => {
+      const periodSeconds = 300; // 5 minuti
+      const cfg = makeAppConfigMock();
+      cfg.env.SCHEDULE.BATCH_PERIOD_SECONDS = periodSeconds;
+      const svc = makeService(cfg);
+
+      const nowSeconds     = Math.floor(Date.now() / 1000);
+      const currentBucket  = Math.floor(nowSeconds / periodSeconds) * periodSeconds;
+      const expected       = currentBucket - periodSeconds;
+      expect(svc.previousPeriodId()).toBe(expected);
     });
   });
 

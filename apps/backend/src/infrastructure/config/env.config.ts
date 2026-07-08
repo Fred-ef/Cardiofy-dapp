@@ -40,6 +40,10 @@ const envSchema = z.object({
   // Schedule cron (croner format)
   BATCH_CRON: z.string().default('0 0 * * *'),
   RECONCILE_CRON: z.string().default('*/5 * * * *'),
+  // Ampiezza (in secondi) del periodo di aggregazione dei batch. Default 86400 = giornaliero
+  // (comportamento storico, un batch a mezzanotte UTC). Il job pubblica sempre l'ultimo periodo
+  // chiuso: BATCH_CRON va allineato alla stessa ampiezza (es. periodo 3600s → cron orario).
+  BATCH_PERIOD_SECONDS: z.coerce.number().int().positive().default(86_400),
   // Massimo numero di asset per singola transazione `publishBatch`, sotto al gas-limit di blocco.
   BATCH_MAX_CHUNK: z.coerce.number().int().positive().default(300),
 
@@ -95,6 +99,7 @@ export const createEnvConfig = (rawProcessEnv: unknown) => {
     SCHEDULE: {
       BATCH_CRON: parsed.data.BATCH_CRON,
       RECONCILE_CRON: parsed.data.RECONCILE_CRON,
+      BATCH_PERIOD_SECONDS: parsed.data.BATCH_PERIOD_SECONDS,
       BATCH_MAX_CHUNK: parsed.data.BATCH_MAX_CHUNK,
     },
     AUTH: {

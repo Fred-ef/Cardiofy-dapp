@@ -4,6 +4,7 @@ import { NotFoundError } from '#errors/not-found.error.js';
 import type { AppConfig } from '#infrastructure/config/index.js';
 import type { ILoggerService } from '#infrastructure/logger/interfaces/i-logger.service.js';
 import type { INotaryGateway } from '#modules/notary/interfaces/i-notary.gateway.js';
+import { periodIdOf } from '#modules/views/view.domain.js';
 import type { IViewRepository } from '#modules/views/interfaces/i-view.repository.js';
 import type { Batch, BatchUpdate } from './batch.domain.js';
 import type { IBatchRepository } from './interfaces/i-batch.repository.js';
@@ -20,22 +21,21 @@ function chunkBy<T>(arr: T[], size: number): T[][] {
 export class BatchService implements IBatchService {
   constructor(
     @inject(DI_TOKENS.IBatchRepository) private readonly repo: IBatchRepository,
-    @inject(DI_TOKENS.IViewRepository)  private readonly views: IViewRepository,
-    @inject(DI_TOKENS.INotaryGateway)   private readonly gateway: INotaryGateway,
-    @inject(DI_TOKENS.AppConfig)        private readonly config: AppConfig,
-    @inject(DI_TOKENS.ILoggerService)   private readonly logger: ILoggerService,
-  ) {}
+    @inject(DI_TOKENS.IViewRepository) private readonly views: IViewRepository,
+    @inject(DI_TOKENS.INotaryGateway) private readonly gateway: INotaryGateway,
+    @inject(DI_TOKENS.AppConfig) private readonly config: AppConfig,
+    @inject(DI_TOKENS.ILoggerService) private readonly logger: ILoggerService,
+  ) { }
 
-  yesterdayPeriodId(): number {
-    const now = new Date();
-    const ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
-    return Math.floor(ms / 1000) - 86_400;
+  /** Periodo corrente meno un  */
+  previousPeriodId(): number {
+    const periodSeconds = this.config.env.SCHEDULE.BATCH_PERIOD_SECONDS;
+    return periodIdOf(new Date(), periodSeconds) - periodSeconds;
   }
 
   /**
-   * Pubblica il batch di un periodo in uno o più chunk (sotto al gas-limit di blocco).
-   * Idempotente e ripartibile: invia solo i chunk mai sottomessi. Conferma, aggiornamento
-   * del mirror e verifica difensiva avvengono in riconciliazione (`ReconciliationService`).
+   * Pubblica il batch di un periodo in uno o più chunk (sotto al gas-limit di blocco)
+   * (inviando solo i chunk mai sottomessi)
    */
   async publishBatchFor(periodId: number): Promise<Batch | null> {
     const existing = await this.repo.findByPeriodId(periodId);
@@ -63,7 +63,7 @@ export class BatchService implements IBatchService {
     await this.repo.ensureChunks(periodId, slices); // idempotente su (periodId, chunkIndex)
 
     // Invia SOLO i chunk mai sottomessi (txHash null). Un chunk PENDING-con-txHash NON si re-invia:
-    // potrebbe essere in mempool o già applicato → lo risolve la riconciliazione (anti doppio conteggio).
+    // potrebbe essere in mempool o già applicato → lo risolve la riconciliazione
     const chunks = await this.repo.findChunks(periodId);
     let periodTxSet = Boolean(existing?.txHash);
     let sent = 0;
