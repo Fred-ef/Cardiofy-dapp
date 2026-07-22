@@ -109,9 +109,9 @@ export function makeViewServiceMock(): IViewService {
 
 export function makeBatchServiceMock(): IBatchService {
   return {
-    publishBatchFor:    vi.fn(),
-    yesterdayPeriodId:  vi.fn().mockReturnValue(0),
-    get:                vi.fn(),
+    publishBatchFor:   vi.fn(),
+    previousPeriodId:  vi.fn().mockReturnValue(0),
+    get:               vi.fn(),
   };
 }
 
@@ -142,9 +142,10 @@ export function makeAppConfigMock(overrides?: Partial<AppConfig['env']>): AppCon
         CONFIRMATIONS: 1,
       },
       SCHEDULE: {
-        BATCH_CRON:      '0 0 * * *',
-        RECONCILE_CRON:  '*/5 * * * *',
-        BATCH_MAX_CHUNK: 300,
+        BATCH_CRON:            '0 0 * * *',
+        RECONCILE_CRON:        '*/5 * * * *',
+        BATCH_PERIOD_SECONDS:  86_400,
+        BATCH_MAX_CHUNK:       300,
       },
       PUBLIC_AUDIT: {
         RPC_URL: 'https://rpc.sepolia.org',

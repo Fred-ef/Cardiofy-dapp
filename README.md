@@ -82,10 +82,12 @@ L'auth si attiva con `AUTH_ENABLED=true` + `CORE_AUTH_TOKEN`. Bearer token condi
 
 | Job | Default | Quando | Sorgente |
 |---|---|---|---|
-| `BatchJob` | `0 0 * * *` (mezzanotte UTC) | Pubblica on-chain il batch del giorno precedente | [batch.job.ts](apps/backend/src/modules/batches/batch.job.ts) |
+| `BatchJob` | `0 0 * * *` (mezzanotte UTC) | Pubblica on-chain l'ultimo periodo chiuso | [batch.job.ts](apps/backend/src/modules/batches/batch.job.ts) |
 | `ReconcileJob` | `*/5 * * * *` (ogni 5 min) | Aggiorna lo status `PENDING → CONFIRMED` quando le conferme on-chain raggiungono `NOTARY_CONFIRMATIONS` | [reconciliation.job.ts](apps/backend/src/modules/reconciliation/reconciliation.job.ts) |
 
 Entrambi i job restano disabilitati automaticamente se le credenziali on-chain (`NOTARY_RPC_URL`, `NOTARY_PRIVATE_KEY`, `NOTARY_CONTRACT_ADDRESS`) non sono configurate.
+
+L'ampiezza del periodo aggregato dal `BatchJob` è configurabile via `BATCH_PERIOD_SECONDS` (default `86400` = giornaliero, invariato rispetto al comportamento storico). Va allineata alla cadenza di `BATCH_CRON` (es. `BATCH_PERIOD_SECONDS=3600` + cron orario; `300` + `*/5 * * * *` per iterare rapidamente in test).
 
 ## Documentazione
 
