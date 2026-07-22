@@ -1,5 +1,11 @@
 import type { HardhatUserConfig } from 'hardhat/config';
 import '@nomicfoundation/hardhat-toolbox';
+import * as dotenv from 'dotenv';
+
+// Carica .env affinché process.env.NOTARY_* sia popolato anche nei comandi hardhat (compile a parte,
+// che non legge network config) e la network sepolia/gnosis non fallisca con HH117 "empty
+// string for network url". Pattern già usato in scripts/transfer-ownership.ts.
+dotenv.config();
 
 const config: HardhatUserConfig = {
   solidity: {
